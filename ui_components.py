@@ -64,15 +64,33 @@ def inject_global_css():
         color: var(--text-primary);
     }
 
-    #MainMenu, footer { visibility: hidden; }
+    /* Hide Streamlit default menu, footer, GitHub repository links, Fork button, deploy button & viewer badge */
+    #MainMenu,
+    footer,
+    #GithubIcon,
+    .stAppDeployButton,
+    div[data-testid="stToolbar"],
+    div[data-testid="stToolbarActions"],
+    div[data-testid="stHeaderActionElements"],
+    div[data-testid="stDecoration"],
+    div[data-testid="stStatusWidget"],
+    div[data-testid="manage-app-button"],
+    div[class*="viewerBadge"],
+    header[data-testid="stHeader"] [data-testid="stToolbar"],
+    header[data-testid="stHeader"] [data-testid="stToolbarActions"],
+    header[data-testid="stHeader"] [data-testid="stHeaderActionElements"],
+    header[data-testid="stHeader"] a[href*="github.com"] {
+        display: none !important;
+        visibility: hidden !important;
+        opacity: 0 !important;
+        pointer-events: none !important;
+        width: 0 !important;
+        height: 0 !important;
+    }
 
-    /* Hide the default Streamlit header toolbar elements but keep the sidebar toggle button visible */
     header[data-testid="stHeader"] {
         background: transparent !important;
         backdrop-filter: none !important;
-    }
-    header[data-testid="stHeader"] .stToolbar {
-        display: none !important;
     }
 
     /* Main Content Padding & Max Width */
@@ -486,14 +504,15 @@ def inject_global_css():
 
     /* ===== Sidebar Toggle Button — Dark Blue + White Icon ===== */
 
-    /* ALL sidebar toggle buttons — both collapse (in sidebar) and expand (in header) */
-    button[data-testid="stSidebarCollapseButton"],
-    button[data-testid="stBaseButton-headerNoPadding"],
-    button[data-testid="stBaseButton-header"],
-    [data-testid="collapsedControl"] button,
+    /* ONLY sidebar toggle buttons (both collapse inside sidebar and expand control) */
+    [data-testid="stSidebar"] button[data-testid="stSidebarCollapseButton"],
+    [data-testid="stSidebar"] button[data-testid="stBaseButton-headerNoPadding"],
+    [data-testid="stSidebarCollapseButton"],
     [data-testid="stSidebarCollapseButton"] button,
-    button[kind="header"],
-    button[kind="headerNoPadding"] {
+    [data-testid="collapsedControl"],
+    [data-testid="collapsedControl"] button,
+    [data-testid="stSidebarCollapsedControl"],
+    [data-testid="stSidebarCollapsedControl"] button {
         background-color: #1e3a8a !important;
         color: #ffffff !important;
         border: 1px solid #1e40af !important;
@@ -502,40 +521,38 @@ def inject_global_css():
         visibility: visible !important;
         z-index: 9999 !important;
     }
-    button[data-testid="stSidebarCollapseButton"]:hover,
-    button[data-testid="stBaseButton-headerNoPadding"]:hover,
-    button[data-testid="stBaseButton-header"]:hover,
-    [data-testid="collapsedControl"] button:hover,
+    [data-testid="stSidebar"] button[data-testid="stSidebarCollapseButton"]:hover,
+    [data-testid="stSidebar"] button[data-testid="stBaseButton-headerNoPadding"]:hover,
+    [data-testid="stSidebarCollapseButton"]:hover,
     [data-testid="stSidebarCollapseButton"] button:hover,
-    button[kind="header"]:hover,
-    button[kind="headerNoPadding"]:hover {
+    [data-testid="collapsedControl"]:hover,
+    [data-testid="collapsedControl"] button:hover,
+    [data-testid="stSidebarCollapsedControl"]:hover,
+    [data-testid="stSidebarCollapsedControl"] button:hover {
         background-color: #1d4ed8 !important;
         border-color: #2563eb !important;
     }
-    button[data-testid="stSidebarCollapseButton"] svg,
-    button[data-testid="stBaseButton-headerNoPadding"] svg,
-    button[data-testid="stBaseButton-header"] svg,
-    [data-testid="collapsedControl"] svg,
+    [data-testid="stSidebar"] button[data-testid="stSidebarCollapseButton"] svg,
+    [data-testid="stSidebar"] button[data-testid="stBaseButton-headerNoPadding"] svg,
     [data-testid="stSidebarCollapseButton"] svg,
-    button[kind="header"] svg,
-    button[kind="headerNoPadding"] svg {
+    [data-testid="collapsedControl"] svg,
+    [data-testid="stSidebarCollapsedControl"] svg {
         color: #ffffff !important;
         fill: #ffffff !important;
         stroke: #ffffff !important;
     }
-    button[data-testid="stSidebarCollapseButton"] svg path,
-    button[data-testid="stBaseButton-headerNoPadding"] svg path,
-    button[data-testid="stBaseButton-header"] svg path,
-    [data-testid="collapsedControl"] svg path,
+    [data-testid="stSidebar"] button[data-testid="stSidebarCollapseButton"] svg path,
+    [data-testid="stSidebar"] button[data-testid="stBaseButton-headerNoPadding"] svg path,
     [data-testid="stSidebarCollapseButton"] svg path,
-    button[kind="header"] svg path,
-    button[kind="headerNoPadding"] svg path {
+    [data-testid="collapsedControl"] svg path,
+    [data-testid="stSidebarCollapsedControl"] svg path {
         fill: #ffffff !important;
         stroke: #ffffff !important;
     }
 
     /* Expand control container */
-    [data-testid="collapsedControl"] {
+    [data-testid="collapsedControl"],
+    [data-testid="stSidebarCollapsedControl"] {
         visibility: visible !important;
         opacity: 1 !important;
         z-index: 9999 !important;
