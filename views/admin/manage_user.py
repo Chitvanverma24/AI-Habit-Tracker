@@ -99,25 +99,19 @@ def fetch_users_paginated(caller_user_id: str, page: int = 1, per_page: int = 10
 
 def db_update_role(uid: str, is_admin: bool) -> None:
     ok, msg = utils.update_user_role(uid, is_admin)
-    if ok:
-        fetch_users_paginated.clear()
-        st.cache_data.clear()
-        st.success(msg)
-        st.rerun()
-    else:
-        st.error(msg)
+    fetch_users_paginated.clear()
+    st.cache_data.clear()
+    st.session_state["admin_action_feedback"] = ("success" if ok else "error", msg)
+    st.rerun()
 
 
 def db_delete_user(uid: str) -> None:
     ok, msg = utils.delete_user(uid)
-    if ok:
-        fetch_users_paginated.clear()
-        st.cache_data.clear()
-        st.session_state.delete_confirm = None
-        st.success(msg)
-        st.rerun()
-    else:
-        st.error(msg)
+    fetch_users_paginated.clear()
+    st.cache_data.clear()
+    st.session_state.delete_confirm = None
+    st.session_state["admin_action_feedback"] = ("success" if ok else "error", msg)
+    st.rerun()
 
 
 @st.dialog("User Details")
@@ -165,6 +159,14 @@ def main() -> None:
     init_session_state()
 
     ui_components.render_hero("👥 Manage Users", "View, filter, manage permissions, and inspect platform users.", icon="👥")
+
+    # Display action feedback (success or error) from dialog operations
+    if "admin_action_feedback" in st.session_state:
+        status, text = st.session_state.pop("admin_action_feedback")
+        if status == "success":
+            st.success(f"✅ {text}")
+        else:
+            st.error(f"❌ {text}")
 
     caller_id = auth.get_user_id()
 

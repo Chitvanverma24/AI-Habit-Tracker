@@ -165,7 +165,44 @@ class TestDeleteUserWithAdminAPI(unittest.TestCase):
 
         ok, msg = AdminService.delete_user("target-user-uuid")
         self.assertFalse(ok)
-        self.assertIn("SUPABASE_SERVICE_ROLE_KEY", msg)
+        self.assertIn("Failed to delete user", msg)
+        self.assertIn("RPC", msg)
+
+    @patch("services.admin_service.auth")
+    def test_invalid_user_id_rejected(self, mock_auth):
+        """Invalid user ID (empty or malformed) must return clean error."""
+        from services.admin_service import AdminService
+        mock_auth.is_admin.return_value = True
+        mock_auth.get_user_id.return_value = "admin-uuid"
+
+        ok, msg = AdminService.delete_user("")
+        self.assertFalse(ok)
+        self.assertIn("Invalid user ID", msg)
+
+        ok, msg = AdminService.delete_user("123")
+        self.assertFalse(ok)
+        self.assertIn("Invalid user ID", msg)
+
+    def test_jwt_normalization_auto_repairs_missing_dot(self):
+        """_normalize_jwt_key must repair a JWT missing the dot between header and payload."""
+        from database import _normalize_jwt_key
+        broken_jwt = (
+            "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"
+            "eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB3bnF2eHdzdmJwbnJ2aGZzY2l1Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NTMwMTU1MSwiZXhwIjoyMTAwODc3NTUxfQ"
+            ".qX_yTQtAI_X52IDGvaJJ58sIOqJ3T6GCvTtyL-TRzqc"
+        )
+        repaired = _normalize_jwt_key(broken_jwt)
+        self.assertIsNotNone(repaired)
+        self.assertEqual(repaired.count("."), 2)
+        self.assertTrue(repaired.startswith("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9."))
+
+    def test_jwt_normalization_keeps_valid_jwt(self):
+        """_normalize_jwt_key must not alter an already valid JWT."""
+        from database import _normalize_jwt_key
+        valid_jwt = "header.payload.signature"
+        self.assertEqual(_normalize_jwt_key(valid_jwt), valid_jwt)
+        self.assertIsNone(_normalize_jwt_key(""))
+        self.assertIsNone(_normalize_jwt_key("YOUR_SERVICE_ROLE_KEY"))
 
 
 # ============================================================

@@ -42,18 +42,23 @@ class AdminService:
     def delete_user(target_user_id: str) -> tuple[bool, str]:
         """Delete user account and all associated data.
 
-        Strategy:
-        1. Try the SECURITY DEFINER RPC `admin_delete_user` which handles
-           cascade deletion of all application data and attempts auth.users removal.
-        2. Use the Supabase Auth Admin API via service_role client to delete
-           the user from auth.users (this cascades to profiles and all child
-           tables via ON DELETE CASCADE foreign keys).
-        3. Fallback: manually delete application data using the admin client
-           to bypass RLS, then delete the profile.
+        Execution Flow:
+        1. Verify caller has admin privileges and is not deleting self.
+        2. Validate target user ID format.
+        3. Unlink license records (SET NULL on assigned_user_id, activated_by).
+        4. Explicitly delete child application records from public tables.
+        5. Delete profile record from profiles table.
+        6. Delete auth user from Supabase Auth via auth.admin.delete_user().
+        7. Fallback to SECURITY DEFINER RPC if Auth API is unavailable.
+        8. Verify deletion and return clear success or precise technical error.
         """
         if not auth.is_admin():
             return False, "Permission Denied: Only Admins can delete users."
 
+        if not target_user_id or not isinstance(target_user_id, str) or len(target_user_id.strip()) < 10:
+            return False, "Invalid user ID provided."
+
+        target_user_id = target_user_id.strip()
         current_uid = auth.get_user_id()
         if target_user_id == current_uid:
             return False, "Cannot delete your own account from the Admin Console."
@@ -61,6 +66,10 @@ class AdminService:
         errors_log = []
         db = get_db()
         admin_db = get_admin_db()
+
+        # Safe diagnostic logging (NEVER logs secret values)
+        has_admin_client = admin_db is not None
+        print(f"[AdminService] Deleting user {target_user_id} (Admin Client Available: {has_admin_client})", file=sys.stderr)
 
         # Use admin client for data operations if available (bypasses RLS)
         data_db = admin_db if admin_db else db
@@ -80,55 +89,7 @@ class AdminService:
         except Exception as e:
             errors_log.append(f"License unlink (activated_by): {e}")
 
-        # ── Step 2: Try Supabase Auth Admin API (service_role key) ──
-        # Deleting from auth.users triggers ON DELETE CASCADE on profiles,
-        # which cascades to all child tables (habits, habit_logs, etc.)
-        auth_deleted = False
-        if admin_db:
-            try:
-                admin_db.auth.admin.delete_user(target_user_id)
-                auth_deleted = True
-            except Exception as e:
-                err_msg = str(e)
-                errors_log.append(f"Auth Admin API delete: {err_msg}")
-                print(f"[AdminService] Auth Admin delete_user error: {e}", file=sys.stderr)
-
-        # ── Step 3: If auth deletion succeeded, verify and return ──
-        if auth_deleted:
-            # Verify the profile is gone (should be cascaded)
-            try:
-                check = data_db.table("profiles").select("id").eq("id", target_user_id).execute()
-                if check.data and len(check.data) > 0:
-                    # Auth user deleted but profile persists — force delete app data
-                    errors_log.append("Auth user deleted but profile persisted — cleaning up manually.")
-                else:
-                    clear_data_cache()
-                    st.cache_data.clear()
-                    return True, "User account and all associated records permanently deleted."
-            except Exception:
-                # If we can't verify, assume success since auth user is deleted
-                clear_data_cache()
-                st.cache_data.clear()
-                return True, "User account deleted from authentication system."
-
-        # ── Step 4: Try SECURITY DEFINER RPC as alternative ──
-        if not auth_deleted:
-            try:
-                rpc_res = db.rpc("admin_delete_user", {"p_target_user_id": target_user_id}).execute()
-                if rpc_res.data:
-                    res = rpc_res.data
-                    if isinstance(res, list):
-                        res = res[0] if res else {}
-                    if isinstance(res, dict) and res.get("success"):
-                        clear_data_cache()
-                        st.cache_data.clear()
-                        return True, "User account and all associated records permanently deleted."
-                    elif isinstance(res, dict) and res.get("error"):
-                        errors_log.append(f"RPC admin_delete_user: {res['error']}")
-            except Exception as e:
-                errors_log.append(f"RPC admin_delete_user: {e}")
-
-        # ── Step 5: Manual cascade deletion fallback ──
+        # ── Step 2: Explicitly delete child records from public tables ──
         child_tables = ["habit_logs", "habits", "journal_entries", "achievements",
                         "notifications", "feedback", "subscriptions"]
         for tbl in child_tables:
@@ -137,43 +98,63 @@ class AdminService:
             except Exception as e:
                 errors_log.append(f"Delete from {tbl}: {e}")
 
-        # Delete profile record
+        # ── Step 3: Delete profile record ──
         try:
             data_db.table("profiles").delete().eq("id", target_user_id).execute()
         except Exception as e:
             errors_log.append(f"Delete profile: {e}")
 
+        # ── Step 4: Delete from Supabase Auth via Admin API (service_role key) ──
+        auth_deleted = False
+        auth_err = None
+        if admin_db:
+            try:
+                admin_db.auth.admin.delete_user(target_user_id)
+                auth_deleted = True
+                print(f"[AdminService] Successfully deleted user {target_user_id} from Supabase Auth.", file=sys.stderr)
+            except Exception as e:
+                auth_err = str(e)
+                errors_log.append(f"Auth Admin API delete: {auth_err}")
+                print(f"[AdminService] Auth Admin delete_user failed for {target_user_id}: {e}", file=sys.stderr)
+
+        # ── Step 5: Fallback to SECURITY DEFINER RPC if Auth API was not executed ──
+        if not auth_deleted:
+            try:
+                rpc_res = db.rpc("admin_delete_user", {"p_target_user_id": target_user_id}).execute()
+                if rpc_res.data:
+                    res = rpc_res.data
+                    if isinstance(res, list):
+                        res = res[0] if res else {}
+                    if isinstance(res, dict) and res.get("success"):
+                        auth_deleted = True
+                    elif isinstance(res, dict) and res.get("error"):
+                        errors_log.append(f"RPC admin_delete_user: {res['error']}")
+            except Exception as e:
+                errors_log.append(f"RPC admin_delete_user: {e}")
+
         # ── Step 6: Verify deletion ──
+        profile_still_exists = False
         try:
             check_res = data_db.table("profiles").select("id").eq("id", target_user_id).execute()
             if check_res.data and len(check_res.data) > 0:
-                # Log accumulated errors for debugging
-                if errors_log:
-                    print(f"[AdminService] delete_user errors for {target_user_id}:", file=sys.stderr)
-                    for err in errors_log:
-                        print(f"  - {err}", file=sys.stderr)
-                if not admin_db:
-                    return False, ("Unable to delete user. The SUPABASE_SERVICE_ROLE_KEY is not configured. "
-                                   "Add it to .streamlit/secrets.toml (find it in Supabase Dashboard → Settings → API → service_role key).")
-                return False, "Unable to delete user profile. Check server logs for details."
+                profile_still_exists = True
         except Exception:
             pass
 
-        # Log any non-fatal errors
-        if errors_log:
-            print(f"[AdminService] delete_user completed with warnings for {target_user_id}:", file=sys.stderr)
-            for err in errors_log:
-                print(f"  - {err}", file=sys.stderr)
+        if profile_still_exists:
+            err_msg = "; ".join(errors_log) if errors_log else "Profile record could not be removed."
+            print(f"[AdminService] Deletion failed for {target_user_id}: {err_msg}", file=sys.stderr)
+            return False, f"Failed to delete user profile: {err_msg}"
 
         clear_data_cache()
         st.cache_data.clear()
 
         if auth_deleted:
             return True, "User account and all associated records permanently deleted."
+        elif not admin_db:
+            return False, "User data removed from database, but Auth deletion failed because SUPABASE_SERVICE_ROLE_KEY is not configured or could not initialize."
         else:
-            return True, ("User application data deleted successfully. "
-                          "Note: The authentication record may still exist. "
-                          "Configure SUPABASE_SERVICE_ROLE_KEY for complete auth deletion.")
+            return False, f"User data removed from database, but Supabase Auth deletion failed: {auth_err or 'Unknown error'}"
 
     @staticmethod
     def save_admin_settings(settings: Dict[str, Any]) -> tuple[bool, str]:
