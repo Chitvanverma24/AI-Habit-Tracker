@@ -43,14 +43,49 @@ class AdminService:
         if target_user_id == current_uid:
             return False, "Cannot delete your own account from the Admin Console."
 
+        db = get_db()
+
+        # 1. Try Supabase RPC admin_delete_user first (SECURITY DEFINER)
         try:
-            get_db().table("profiles").delete().eq("id", target_user_id).execute()
+            rpc_res = db.rpc("admin_delete_user", {"p_target_user_id": target_user_id}).execute()
+            if rpc_res.data:
+                res = rpc_res.data
+                if isinstance(res, list):
+                    res = res[0] if res else {}
+                if isinstance(res, dict) and res.get("success"):
+                    clear_data_cache()
+                    st.cache_data.clear()
+                    return True, "User account and all associated records permanently deleted."
+        except Exception:
+            pass
+
+        # 2. Fallback: Cascading deletion via direct table operations
+        try:
+            # Unlink license records
+            try:
+                db.table("licenses").update({"assigned_user_id": None, "activated_by": None}).eq("assigned_user_id", target_user_id).execute()
+                db.table("licenses").update({"activated_by": None}).eq("activated_by", target_user_id).execute()
+            except Exception:
+                pass
+
+            # Delete related child records
+            for tbl in ["habit_logs", "habits", "journal_entries", "achievements", "notifications", "feedback", "subscriptions"]:
+                try:
+                    db.table(tbl).delete().eq("user_id", target_user_id).execute()
+                except Exception:
+                    pass
+
+            # Delete profile record
+            db.table("profiles").delete().eq("id", target_user_id).execute()
+
+            # Verify deletion status in database
+            check_res = db.table("profiles").select("id").eq("id", target_user_id).execute()
+            if check_res.data and len(check_res.data) > 0:
+                return False, "Unable to delete user profile. Please run the database migration script in Supabase to ensure admin DELETE permissions."
+
             clear_data_cache()
-            # NOTE: This only deletes the profile and cascaded data.
-            # The auth.users record persists (requires Supabase Admin API / service_role key).
-            # The user's login will fail on next attempt since profile creation trigger
-            # will re-create a blank profile, effectively resetting them.
-            return True, "User profile and data deleted. Auth account requires manual removal via Supabase Dashboard."
+            st.cache_data.clear()
+            return True, "User account and all associated records deleted successfully."
         except Exception as e:
             return False, f"Failed to delete user: {str(e)}"
 

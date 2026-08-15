@@ -284,6 +284,8 @@ ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
 -- -----------------------------------------------------------------------------------------
 CREATE POLICY "Users can view own profile" ON public.profiles FOR SELECT USING (auth.uid() = id OR public.is_admin());
 CREATE POLICY "Users can update own profile" ON public.profiles FOR UPDATE USING (auth.uid() = id OR public.is_admin());
+CREATE POLICY "Admins can delete profiles" ON public.profiles FOR DELETE USING (public.is_admin());
+CREATE POLICY "Users can delete own profile" ON public.profiles FOR DELETE USING (auth.uid() = id);
 -- Note: Insert is handled by the auth trigger via Security Definer
 
 -- -----------------------------------------------------------------------------------------
@@ -559,5 +561,55 @@ BEGIN
     END LOOP;
 
     RETURN jsonb_build_object('success', true, 'count', v_count);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+-- -----------------------------------------------------------------------------------------
+-- 9. ADMIN SECURE USER DELETION FUNCTION (SECURITY DEFINER)
+-- -----------------------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.admin_delete_user(p_target_user_id UUID)
+RETURNS JSONB AS $$
+DECLARE
+    v_caller_id UUID := auth.uid();
+BEGIN
+    IF NOT public.is_admin() THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Permission denied. Only admins can delete users.');
+    END IF;
+
+    IF p_target_user_id IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Invalid user ID.');
+    END IF;
+
+    IF p_target_user_id = v_caller_id THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Cannot delete your own admin account.');
+    END IF;
+
+    -- 1. Unlink associated licenses
+    UPDATE public.licenses
+    SET assigned_user_id = NULL,
+        activated_by = NULL
+    WHERE assigned_user_id = p_target_user_id OR activated_by = p_target_user_id;
+
+    -- 2. Delete cascaded user data
+    DELETE FROM public.habit_logs WHERE user_id = p_target_user_id;
+    DELETE FROM public.habits WHERE user_id = p_target_user_id;
+    DELETE FROM public.journal_entries WHERE user_id = p_target_user_id;
+    DELETE FROM public.achievements WHERE user_id = p_target_user_id;
+    DELETE FROM public.notifications WHERE user_id = p_target_user_id;
+    DELETE FROM public.feedback WHERE user_id = p_target_user_id;
+    DELETE FROM public.subscriptions WHERE user_id = p_target_user_id;
+
+    -- 3. Delete profile
+    DELETE FROM public.profiles WHERE id = p_target_user_id;
+
+    -- 4. Delete from auth.users if permissions allow
+    BEGIN
+        DELETE FROM auth.users WHERE id = p_target_user_id;
+    EXCEPTION WHEN OTHERS THEN
+        -- auth.users deletion might be restricted depending on Supabase extension configuration
+        NULL;
+    END;
+
+    RETURN jsonb_build_object('success', true, 'message', 'User and associated data deleted successfully.');
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;

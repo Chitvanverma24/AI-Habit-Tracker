@@ -100,6 +100,7 @@ def fetch_users_paginated(caller_user_id: str, page: int = 1, per_page: int = 10
 def db_update_role(uid: str, is_admin: bool) -> None:
     ok, msg = utils.update_user_role(uid, is_admin)
     if ok:
+        fetch_users_paginated.clear()
         st.cache_data.clear()
         st.success(msg)
         st.rerun()
@@ -110,6 +111,7 @@ def db_update_role(uid: str, is_admin: bool) -> None:
 def db_delete_user(uid: str) -> None:
     ok, msg = utils.delete_user(uid)
     if ok:
+        fetch_users_paginated.clear()
         st.cache_data.clear()
         st.session_state.delete_confirm = None
         st.success(msg)
@@ -119,10 +121,15 @@ def db_delete_user(uid: str) -> None:
 
 
 @st.dialog("User Details")
-def dialog_user_details(row: pd.Series) -> None:
+def dialog_user_details(row: pd.Series, caller_id: str = "") -> None:
     uid = row["id"]
+    is_self = (uid == caller_id)
+
     st.subheader(row.get("display_name", "Unknown User"))
     st.caption(f"User ID: {uid}")
+    if is_self:
+        st.info("👤 This is your active administrator account.")
+
     c1, c2 = st.columns(2)
     c1.metric("Habits", row.get("total_habits", 0))
     c2.metric("Completions", f"{row.get('current_streak', 0)} 🔥")
@@ -131,16 +138,22 @@ def dialog_user_details(row: pd.Series) -> None:
 
     c3, c4 = st.columns(2)
     if row.get("is_admin"):
-        if c3.button("Remove Admin", key=f"rm_{uid}", use_container_width=True):
+        if c3.button("Remove Admin", key=f"rm_{uid}", use_container_width=True, disabled=is_self):
             db_update_role(uid, False)
     else:
         if c3.button("Make Admin", key=f"mk_{uid}", use_container_width=True):
             db_update_role(uid, True)
 
-    if st.session_state.delete_confirm == uid:
-        st.error("Confirm deletion? This cannot be undone.")
-        if c4.button("Confirm Delete", type="primary", key=f"cdel_{uid}", use_container_width=True):
+    if is_self:
+        c4.button("Delete User", key=f"del_{uid}", use_container_width=True, disabled=True, help="You cannot delete your own account from the Admin Console.")
+    elif st.session_state.delete_confirm == uid:
+        st.error("⚠️ Confirm deletion? This will permanently delete user records and cannot be undone.")
+        cc1, cc2 = st.columns(2)
+        if cc1.button("🗑️ Confirm Delete", type="primary", key=f"cdel_{uid}", use_container_width=True):
             db_delete_user(uid)
+        if cc2.button("Cancel", key=f"cncl_{uid}", use_container_width=True):
+            st.session_state.delete_confirm = None
+            st.rerun()
     else:
         if c4.button("Delete User", key=f"del_{uid}", use_container_width=True):
             st.session_state.delete_confirm = uid
@@ -186,7 +199,7 @@ def main() -> None:
             c2.write(f"Role: **{'Admin' if row.get('is_admin') else 'User'}**")
             c3.write(f"Habits: **{row.get('total_habits', 0)}** | Completions: **{row.get('current_streak', 0)}**")
             if c4.button("Inspect", key=f"inspect_{row['id']}", use_container_width=True):
-                dialog_user_details(row)
+                dialog_user_details(row, caller_id)
 
     if total_pages > 1:
         st.write("")

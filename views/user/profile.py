@@ -55,7 +55,23 @@ def handle_password_reset(email: str) -> None:
 def process_account_deletion() -> None:
     db = get_db()
     user_id = auth.get_user_id()
+    if not user_id:
+        return
     try:
+        # Unlink licenses
+        try:
+            db.table("licenses").update({"assigned_user_id": None, "activated_by": None}).eq("assigned_user_id", user_id).execute()
+        except Exception:
+            pass
+
+        # Delete user records
+        for tbl in ["habit_logs", "habits", "journal_entries", "achievements", "notifications", "feedback", "subscriptions"]:
+            try:
+                db.table(tbl).delete().eq("user_id", user_id).execute()
+            except Exception:
+                pass
+
+        # Delete profile
         db.table("profiles").delete().eq("id", user_id).execute()
         auth.logout()
         st.session_state.clear()
