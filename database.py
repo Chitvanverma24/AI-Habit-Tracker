@@ -22,6 +22,22 @@ def get_db() -> Client:
     return create_client(url, key)
 
 
+@st.cache_resource(show_spinner=False)
+def get_admin_db() -> Optional[Client]:
+    """Returns a privileged Supabase client using the service_role key.
+    Used exclusively for server-side admin operations (e.g., deleting auth users).
+    Returns None if the service_role key is not configured.
+    NEVER expose this client or its key to the frontend."""
+    try:
+        url = st.secrets["SUPABASE_URL"]
+        service_key = st.secrets["SUPABASE_SERVICE_ROLE_KEY"]
+        if not service_key or service_key == "YOUR_SERVICE_ROLE_KEY":
+            return None
+        return create_client(url, service_key)
+    except (KeyError, Exception):
+        return None
+
+
 
 # Health Check
 

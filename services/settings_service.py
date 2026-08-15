@@ -117,14 +117,15 @@ class SettingsService:
             current[key] = value
             _save_local_fallback(current)
 
+            db_error = None
             try:
                 db = get_db()
                 db.table("system_settings").upsert({
                     "key": key,
                     "value": value
                 }).execute()
-            except Exception:
-                pass
+            except Exception as e:
+                db_error = str(e)
 
             try:
                 st.session_state["global_system_settings"] = current
@@ -132,6 +133,8 @@ class SettingsService:
                 pass
 
             st.cache_data.clear()
+            if db_error:
+                return True, f"Setting '{key}' saved locally but database sync failed: {db_error}"
             return True, f"Setting '{key}' updated successfully."
         except Exception as e:
             return False, f"Failed to update setting '{key}': {str(e)}"
@@ -151,11 +154,12 @@ class SettingsService:
 
             _save_local_fallback(current)
 
+            db_error = None
             try:
                 db = get_db()
                 db.table("system_settings").upsert(records_to_upsert).execute()
-            except Exception:
-                pass
+            except Exception as e:
+                db_error = str(e)
 
             try:
                 st.session_state["global_system_settings"] = current
@@ -163,6 +167,8 @@ class SettingsService:
                 pass
 
             st.cache_data.clear()
+            if db_error:
+                return True, f"Settings saved locally but database sync failed: {db_error}"
             return True, "All system settings updated successfully."
         except Exception as e:
             return False, f"Failed to update settings: {str(e)}"
