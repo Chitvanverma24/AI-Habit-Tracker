@@ -1,0 +1,14 @@
+{
+  "maintenance_mode": false,
+  "registration_enabled": true,
+  "ai_enabled": true,
+  "selected_ai_model": "gemini-1.5-flash",
+  "allow_journal": true,
+  "allow_habits": true,
+  "allow_achievements": true,
+  "allow_admin_panel": true,
+  "system_name": "AI Habit Tracker",
+  "system_logo": "\ud83c\udfaf",
+  "support_email": "support@habittracker.ai",
+  "default_timezone": "UTC"
+}
