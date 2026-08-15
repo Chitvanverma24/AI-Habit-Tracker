@@ -484,26 +484,66 @@ def inject_global_css():
         color: #475569;
     }
 
-    /* ===== Sidebar Collapse Button Fix ===== */
+    /* ===== Sidebar Toggle Button — Dark Blue + White Icon ===== */
+
+    /* ALL sidebar toggle buttons — both collapse (in sidebar) and expand (in header) */
     button[data-testid="stSidebarCollapseButton"],
+    button[data-testid="stBaseButton-headerNoPadding"],
+    button[data-testid="stBaseButton-header"],
+    [data-testid="collapsedControl"] button,
+    [data-testid="stSidebarCollapseButton"] button,
+    button[kind="header"],
+    button[kind="headerNoPadding"] {
+        background-color: #1e3a8a !important;
+        color: #ffffff !important;
+        border: 1px solid #1e40af !important;
+        border-radius: 6px !important;
+        opacity: 1 !important;
+        visibility: visible !important;
+        z-index: 9999 !important;
+    }
+    button[data-testid="stSidebarCollapseButton"]:hover,
+    button[data-testid="stBaseButton-headerNoPadding"]:hover,
+    button[data-testid="stBaseButton-header"]:hover,
+    [data-testid="collapsedControl"] button:hover,
+    [data-testid="stSidebarCollapseButton"] button:hover,
+    button[kind="header"]:hover,
+    button[kind="headerNoPadding"]:hover {
+        background-color: #1d4ed8 !important;
+        border-color: #2563eb !important;
+    }
+    button[data-testid="stSidebarCollapseButton"] svg,
+    button[data-testid="stBaseButton-headerNoPadding"] svg,
+    button[data-testid="stBaseButton-header"] svg,
+    [data-testid="collapsedControl"] svg,
+    [data-testid="stSidebarCollapseButton"] svg,
+    button[kind="header"] svg,
+    button[kind="headerNoPadding"] svg {
+        color: #ffffff !important;
+        fill: #ffffff !important;
+        stroke: #ffffff !important;
+    }
+    button[data-testid="stSidebarCollapseButton"] svg path,
+    button[data-testid="stBaseButton-headerNoPadding"] svg path,
+    button[data-testid="stBaseButton-header"] svg path,
+    [data-testid="collapsedControl"] svg path,
+    [data-testid="stSidebarCollapseButton"] svg path,
+    button[kind="header"] svg path,
+    button[kind="headerNoPadding"] svg path {
+        fill: #ffffff !important;
+        stroke: #ffffff !important;
+    }
+
+    /* Expand control container */
     [data-testid="collapsedControl"] {
         visibility: visible !important;
         opacity: 1 !important;
         z-index: 9999 !important;
         position: fixed !important;
-    }
-
-    button[data-testid="stSidebarCollapseButton"] svg,
-    [data-testid="collapsedControl"] svg {
-        fill: #0f172a !important;
-        stroke: #0f172a !important;
-    }
-
-    [data-testid="collapsedControl"] {
-        background-color: #ffffff !important;
-        border: 1px solid #e2e8f0 !important;
+        background-color: #1e3a8a !important;
+        border: 1px solid #1e40af !important;
         border-radius: 8px !important;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.08) !important;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2) !important;
         left: 0.5rem !important;
         top: 0.5rem !important;
     }
