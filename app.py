@@ -448,5 +448,4 @@ def main() -> None:
     ui_components.render_footer(sys_name, "2.0.0", utils.today().year)
 
 
-if __name__ == "__main__":
-    main()
+main()
