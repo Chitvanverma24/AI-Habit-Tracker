@@ -93,6 +93,131 @@ def render_license_gate() -> None:
 
 
 
+# Authentication & Password Recovery Handlers
+
+def handle_auth_redirects() -> bool:
+    """
+    Inspects st.query_params for auth callbacks (PKCE code, recovery tokens, errors).
+    Sets up session state if valid, or captures error messages.
+    Returns True if the app is currently in password recovery mode.
+    """
+    # 1. If already flagged in recovery mode in session state
+    if st.session_state.get("is_password_recovery"):
+        return True
+
+    # 2. Check for error in query params (e.g. otp_expired, access_denied)
+    err = st.query_params.get("error")
+    if err:
+        err_code = st.query_params.get("error_code")
+        err_desc = st.query_params.get("error_description") or err_code or err
+        st.query_params.clear()
+        if "otp_expired" in str(err_code) or "otp_expired" in str(err_desc) or "access_denied" in str(err):
+            st.session_state["auth_error"] = "The password reset link has expired or has already been used. Please request a new reset link below."
+        else:
+            st.session_state["auth_error"] = f"Password reset error: {err_desc}"
+        return False
+
+    # 3. Check for PKCE authorization code (?code=...)
+    code = st.query_params.get("code")
+    if code:
+        ok, res = auth.exchange_code(code)
+        st.query_params.clear()
+        if ok:
+            st.session_state["is_password_recovery"] = True
+            return True
+        else:
+            st.session_state["auth_error"] = f"Failed to verify reset link: {res}. Please request a new link."
+            return False
+
+    # 4. Check for OTP / token_hash (?token_hash=... or ?token=...)
+    token_hash = st.query_params.get("token_hash") or st.query_params.get("token")
+    token_type = st.query_params.get("type")
+    if token_hash and token_type == "recovery":
+        ok, res = auth.verify_recovery_token(token_hash)
+        st.query_params.clear()
+        if ok:
+            st.session_state["is_password_recovery"] = True
+            return True
+        else:
+            st.session_state["auth_error"] = f"Failed to verify recovery token: {res}. Please request a new link."
+            return False
+
+    # 5. Check for direct access_token (?access_token=...)
+    access_token = st.query_params.get("access_token")
+    if access_token:
+        refresh_token = st.query_params.get("refresh_token", "")
+        ok, res = auth.set_auth_session(access_token, refresh_token)
+        st.query_params.clear()
+        if ok:
+            if token_type == "recovery" or st.query_params.get("type") == "recovery":
+                st.session_state["is_password_recovery"] = True
+                return True
+            return False
+        else:
+            st.session_state["auth_error"] = f"Failed to establish session: {res}"
+            return False
+
+    return False
+
+
+def render_password_reset_screen() -> None:
+    """Renders dedicated Set New Password screen for users resetting their password."""
+    sys_name = utils.get_setting("system_name", "AI Habit Tracker")
+    sys_logo = utils.get_setting("system_logo", "🎯")
+
+    st.markdown(f"""
+    <div style="text-align: center; padding: 2rem 0 1rem 0;">
+        <div style="display: inline-flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem;">
+            <div style="width: 46px; height: 46px; background: linear-gradient(135deg, #2563eb, #1d4ed8);
+                        border-radius: 12px; display: flex; align-items: center; justify-content: center;
+                        font-size: 1.4rem; color: white; font-weight: 800; box-shadow: 0 4px 14px rgba(37, 99, 235, 0.4);">{sys_logo}</div>
+            <span style="font-size: 1.6rem; font-weight: 800; color: #0f172a; letter-spacing: -0.03em;">
+                {sys_name}
+            </span>
+        </div>
+        <p style="color: #475569; font-size: 0.95rem; margin-top: 0.25rem;">
+            Secure Password Reset
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st.markdown("##### 🔒 Set New Password")
+        st.caption("Enter and confirm your new password below.")
+
+        with st.form("set_new_password_form"):
+            new_pwd = st.text_input("New Password", type="password", help="Must be at least 6 characters", key="recovery_new_pwd")
+            confirm_pwd = st.text_input("Confirm New Password", type="password", key="recovery_confirm_pwd")
+            st.write("")
+            submit_btn = st.form_submit_button("Update Password", type="primary", use_container_width=True)
+
+            if submit_btn:
+                if not new_pwd or not confirm_pwd:
+                    st.error("Please fill in both password fields.")
+                elif new_pwd != confirm_pwd:
+                    st.error("Passwords do not match.")
+                elif len(new_pwd) < 6:
+                    st.error("Password must be at least 6 characters.")
+                else:
+                    success, res = auth.update_password(new_pwd)
+                    if success:
+                        st.session_state.pop("is_password_recovery", None)
+                        st.query_params.clear()
+                        auth.logout()
+                        st.session_state["auth_success"] = "✅ Password updated successfully! Please sign in with your new password."
+                        st.rerun()
+                    else:
+                        st.error(f"Failed to update password: {res}")
+
+        st.write("")
+        if st.button("Cancel & Return to Sign In", use_container_width=True, key="btn_cancel_reset"):
+            st.session_state.pop("is_password_recovery", None)
+            st.query_params.clear()
+            auth.logout()
+            st.rerun()
+
+
 # Authentication UI
 
 def render_auth_ui() -> None:
@@ -120,6 +245,12 @@ def render_auth_ui() -> None:
 
     if maint_active:
         st.info("🚧 System is currently under maintenance. Only Administrators can sign in.")
+
+    if "auth_success" in st.session_state:
+        st.success(st.session_state.pop("auth_success"))
+
+    if "auth_error" in st.session_state:
+        st.error(st.session_state.pop("auth_error"))
 
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
@@ -413,6 +544,12 @@ def main() -> None:
 
     if not check_database_connection():
         st.error("🚨 System Offline — Unable to connect to database. Please check configuration.")
+        return
+
+    # Check for authentication redirect / password recovery flow
+    is_recovery = handle_auth_redirects()
+    if is_recovery:
+        render_password_reset_screen()
         return
 
     if not auth.is_authenticated():

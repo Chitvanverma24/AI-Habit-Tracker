@@ -603,6 +603,20 @@ def inject_global_css():
         }
     }
     </style>
+    <script>
+    (function() {
+        if (window.location.hash && (
+            window.location.hash.indexOf('access_token') !== -1 ||
+            window.location.hash.indexOf('type=recovery') !== -1 ||
+            window.location.hash.indexOf('error=') !== -1 ||
+            window.location.hash.indexOf('code=') !== -1
+        )) {
+            var hash = window.location.hash.substring(1);
+            var search = window.location.search ? window.location.search + '&' + hash : '?' + hash;
+            window.location.replace(window.location.pathname + search);
+        }
+    })();
+    </script>
     """, unsafe_allow_html=True)
 
 

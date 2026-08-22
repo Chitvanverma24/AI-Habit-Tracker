@@ -36,6 +36,54 @@ class Role:
         return permissions_matrix.get(role_name.lower(), {cls.USER})
 
 
+def get_app_url() -> str:
+    """
+    Returns the appropriate application base URL for redirects (e.g. password resets).
+    Prioritizes:
+    1. Secret configuration: APP_URL, SITE_URL, REDIRECT_URL, or BASE_URL in st.secrets
+    2. Environment variables: APP_URL, SITE_URL, STREAMLIT_APP_URL, STREAMLIT_SERVER_BASE_URL
+    3. Production vs Local detection:
+       - Production on Streamlit Cloud (Linux container / /mount/src / Streamlit Cloud env):
+         https://ai-habbit-tracker.streamlit.app/
+       - Local development:
+         http://localhost:8501/
+    """
+    import os
+    import sys
+
+    # 1. Check Streamlit secrets
+    try:
+        if hasattr(st, "secrets"):
+            for key in ["APP_URL", "SITE_URL", "REDIRECT_URL", "BASE_URL"]:
+                if key in st.secrets and st.secrets[key]:
+                    url = str(st.secrets[key]).strip()
+                    return url if url.endswith("/") else f"{url}/"
+    except Exception:
+        pass
+
+    # 2. Check Environment Variables
+    for env_key in ["APP_URL", "SITE_URL", "STREAMLIT_APP_URL", "STREAMLIT_SERVER_BASE_URL"]:
+        val = os.environ.get(env_key)
+        if val and val.strip():
+            url = val.strip()
+            return url if url.endswith("/") else f"{url}/"
+
+    # 3. Environment detection: Streamlit Cloud vs Local development
+    is_cloud = (
+        os.path.exists("/mount/src") or
+        os.path.exists("/app") or
+        os.environ.get("STREAMLIT_SHARING_HOST") is not None or
+        os.environ.get("STREAMLIT_SERVER_ENABLE_STATIC_SERVING") == "true" or
+        (sys.platform.startswith("linux") and os.environ.get("HOSTNAME", "").startswith("streamlit"))
+    )
+
+    if is_cloud:
+        return "https://ai-habbit-tracker.streamlit.app/"
+
+    # Default to local development
+    return "http://localhost:8501/"
+
+
 class AuthManager:
     """Handles all authentication and Role-Based Access Control (RBAC).
     Guarantees strict per-session user isolation in Streamlit."""
@@ -60,6 +108,10 @@ class AuthManager:
             return "Password must be at least 6 characters long."
         if "invalid email" in msg_lower or "unable to validate email" in msg_lower:
             return "Please enter a valid email address."
+        if "otp_expired" in msg_lower or "token has expired" in msg_lower:
+            return "The password reset link has expired. Please request a new reset link."
+        if "access_denied" in msg_lower:
+            return "Access denied or reset link invalid. Please request a new reset link."
         return msg
 
     # --- Core Auth Operations ---
@@ -141,7 +193,7 @@ class AuthManager:
             pass
 
         if hasattr(st, "session_state"):
-            for k in ["auth_user", "auth_session", "auth_user_id", "auth_user_email", "auth_token", "_supabase_client"]:
+            for k in ["auth_user", "auth_session", "auth_user_id", "auth_user_email", "auth_token", "_supabase_client", "is_password_recovery"]:
                 st.session_state.pop(k, None)
             st.session_state.clear()
 
@@ -153,11 +205,91 @@ class AuthManager:
 
         return True
 
-    def forgot_password(self, email: str):
-        """Send password reset email. Returns (success: bool, error_msg?)."""
+    def forgot_password(self, email: str, redirect_url: Optional[str] = None):
+        """Send password reset email with environment-aware redirect URL. Returns (success: bool, error_msg?)."""
         try:
-            self.db.auth.reset_password_email(email.strip().lower())
+            target_url = redirect_url or get_app_url()
+            if target_url and not target_url.endswith("/"):
+                target_url = f"{target_url}/"
+
+            options = {}
+            if target_url:
+                options["redirect_to"] = target_url
+
+            self.db.auth.reset_password_email(email.strip().lower(), options=options)
             return True, None
+        except Exception as e:
+            return False, self._format_auth_error(e)
+
+    def exchange_code(self, auth_code: str):
+        """Exchange PKCE authorization code for an authenticated session."""
+        try:
+            client = self.db
+            response = client.auth.exchange_code_for_session({"auth_code": auth_code.strip()})
+            if response and hasattr(response, "user") and response.user:
+                user = response.user
+                session = getattr(response, "session", None)
+                if hasattr(st, "session_state"):
+                    st.session_state["auth_user"] = user
+                    st.session_state["auth_session"] = session
+                    st.session_state["auth_user_id"] = user.id
+                    st.session_state["auth_user_email"] = user.email
+                    if session and hasattr(session, "access_token"):
+                        st.session_state["auth_token"] = session.access_token
+                        try:
+                            client.postgrest.auth(session.access_token)
+                        except Exception:
+                            pass
+                    st.session_state["_supabase_client"] = client
+            return True, response
+        except Exception as e:
+            return False, self._format_auth_error(e)
+
+    def verify_recovery_token(self, token_hash: str):
+        """Verify password recovery OTP/token_hash for an authenticated session."""
+        try:
+            client = self.db
+            response = client.auth.verify_otp({"token_hash": token_hash.strip(), "type": "recovery"})
+            if response and hasattr(response, "user") and response.user:
+                user = response.user
+                session = getattr(response, "session", None)
+                if hasattr(st, "session_state"):
+                    st.session_state["auth_user"] = user
+                    st.session_state["auth_session"] = session
+                    st.session_state["auth_user_id"] = user.id
+                    st.session_state["auth_user_email"] = user.email
+                    if session and hasattr(session, "access_token"):
+                        st.session_state["auth_token"] = session.access_token
+                        try:
+                            client.postgrest.auth(session.access_token)
+                        except Exception:
+                            pass
+                    st.session_state["_supabase_client"] = client
+            return True, response
+        except Exception as e:
+            return False, self._format_auth_error(e)
+
+    def set_auth_session(self, access_token: str, refresh_token: str = ""):
+        """Manually establish an authenticated session from an access token."""
+        try:
+            client = self.db
+            response = client.auth.set_session(access_token.strip(), refresh_token.strip())
+            if response and hasattr(response, "user") and response.user:
+                user = response.user
+                session = getattr(response, "session", None)
+                if hasattr(st, "session_state"):
+                    st.session_state["auth_user"] = user
+                    st.session_state["auth_session"] = session
+                    st.session_state["auth_user_id"] = user.id
+                    st.session_state["auth_user_email"] = user.email
+                    if session and hasattr(session, "access_token"):
+                        st.session_state["auth_token"] = session.access_token
+                        try:
+                            client.postgrest.auth(session.access_token)
+                        except Exception:
+                            pass
+                    st.session_state["_supabase_client"] = client
+            return True, response
         except Exception as e:
             return False, self._format_auth_error(e)
 
