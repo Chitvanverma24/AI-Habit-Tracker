@@ -64,22 +64,18 @@ def inject_global_css():
         color: var(--text-primary);
     }
 
-    /* Hide Streamlit default menu, footer, GitHub repository links, Fork button, deploy button & viewer badge */
+    /* Hide Streamlit default menu, footer, GitHub icon, deploy button & viewer badge.
+       IMPORTANT: Do NOT hide stToolbar / stToolbarActions / stHeaderActionElements
+       because those are parent containers of the sidebar expand/collapse control.
+       Hiding them causes the sidebar reopen button to disappear. */
     #MainMenu,
     footer,
     #GithubIcon,
     .stAppDeployButton,
-    div[data-testid="stToolbar"],
-    div[data-testid="stToolbarActions"],
-    div[data-testid="stHeaderActionElements"],
     div[data-testid="stDecoration"],
     div[data-testid="stStatusWidget"],
     div[data-testid="manage-app-button"],
-    div[class*="viewerBadge"],
-    header[data-testid="stHeader"] [data-testid="stToolbar"],
-    header[data-testid="stHeader"] [data-testid="stToolbarActions"],
-    header[data-testid="stHeader"] [data-testid="stHeaderActionElements"],
-    header[data-testid="stHeader"] a[href*="github.com"] {
+    div[class*="viewerBadge"] {
         display: none !important;
         visibility: hidden !important;
         opacity: 0 !important;
@@ -88,6 +84,12 @@ def inject_global_css():
         height: 0 !important;
     }
 
+    /* Hide GitHub links inside the header without hiding the header itself */
+    header[data-testid="stHeader"] a[href*="github.com"] {
+        display: none !important;
+    }
+
+    /* Make header transparent but keep its layout so sidebar toggle remains accessible */
     header[data-testid="stHeader"] {
         background: transparent !important;
         backdrop-filter: none !important;
@@ -504,14 +506,37 @@ def inject_global_css():
 
     /* ===== Sidebar Toggle Button — Dark Blue + White Icon ===== */
 
-    /* ONLY sidebar toggle buttons (both collapse inside sidebar and expand control) */
-    [data-testid="stSidebar"] button[data-testid="stSidebarCollapseButton"],
-    [data-testid="stSidebar"] button[data-testid="stBaseButton-headerNoPadding"],
-    [data-testid="stSidebarCollapseButton"],
-    [data-testid="stSidebarCollapseButton"] button,
+    /* Collapse button (inside open sidebar) */
+    [data-testid="stSidebar"] button[data-testid="stBaseButton-headerNoPadding"] {
+        background-color: #1e3a8a !important;
+        color: #ffffff !important;
+        border: 1px solid #1e40af !important;
+        border-radius: 6px !important;
+        opacity: 1 !important;
+        visibility: visible !important;
+        pointer-events: auto !important;
+    }
+    [data-testid="stSidebar"] button[data-testid="stBaseButton-headerNoPadding"]:hover {
+        background-color: #1d4ed8 !important;
+        border-color: #2563eb !important;
+    }
+    [data-testid="stSidebar"] button[data-testid="stBaseButton-headerNoPadding"] svg,
+    [data-testid="stSidebar"] button[data-testid="stBaseButton-headerNoPadding"] svg path {
+        color: #ffffff !important;
+        fill: #ffffff !important;
+        stroke: #ffffff !important;
+    }
+
+    /* Expand/reopen control (visible when sidebar is collapsed) —
+       Streamlit uses various data-testid names across versions. */
     [data-testid="collapsedControl"],
+    [data-testid="stSidebarCollapsedControl"] {
+        visibility: visible !important;
+        opacity: 1 !important;
+        z-index: 999999 !important;
+        pointer-events: auto !important;
+    }
     [data-testid="collapsedControl"] button,
-    [data-testid="stSidebarCollapsedControl"],
     [data-testid="stSidebarCollapsedControl"] button {
         background-color: #1e3a8a !important;
         color: #ffffff !important;
@@ -519,50 +544,36 @@ def inject_global_css():
         border-radius: 6px !important;
         opacity: 1 !important;
         visibility: visible !important;
-        z-index: 9999 !important;
+        pointer-events: auto !important;
+        cursor: pointer !important;
+        min-width: 32px !important;
+        min-height: 32px !important;
     }
-    [data-testid="stSidebar"] button[data-testid="stSidebarCollapseButton"]:hover,
-    [data-testid="stSidebar"] button[data-testid="stBaseButton-headerNoPadding"]:hover,
-    [data-testid="stSidebarCollapseButton"]:hover,
-    [data-testid="stSidebarCollapseButton"] button:hover,
-    [data-testid="collapsedControl"]:hover,
     [data-testid="collapsedControl"] button:hover,
-    [data-testid="stSidebarCollapsedControl"]:hover,
     [data-testid="stSidebarCollapsedControl"] button:hover {
         background-color: #1d4ed8 !important;
         border-color: #2563eb !important;
     }
-    [data-testid="stSidebar"] button[data-testid="stSidebarCollapseButton"] svg,
-    [data-testid="stSidebar"] button[data-testid="stBaseButton-headerNoPadding"] svg,
-    [data-testid="stSidebarCollapseButton"] svg,
     [data-testid="collapsedControl"] svg,
-    [data-testid="stSidebarCollapsedControl"] svg {
+    [data-testid="stSidebarCollapsedControl"] svg,
+    [data-testid="collapsedControl"] svg path,
+    [data-testid="stSidebarCollapsedControl"] svg path {
         color: #ffffff !important;
         fill: #ffffff !important;
         stroke: #ffffff !important;
     }
-    [data-testid="stSidebar"] button[data-testid="stSidebarCollapseButton"] svg path,
-    [data-testid="stSidebar"] button[data-testid="stBaseButton-headerNoPadding"] svg path,
-    [data-testid="stSidebarCollapseButton"] svg path,
-    [data-testid="collapsedControl"] svg path,
-    [data-testid="stSidebarCollapsedControl"] svg path {
-        fill: #ffffff !important;
-        stroke: #ffffff !important;
-    }
 
-    /* Expand control container */
-    [data-testid="collapsedControl"],
-    [data-testid="stSidebarCollapsedControl"] {
-        visibility: visible !important;
-        opacity: 1 !important;
-        z-index: 9999 !important;
-        position: fixed !important;
-        background-color: #1e3a8a !important;
-        border: 1px solid #1e40af !important;
-        border-radius: 8px !important;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2) !important;
-        left: 0.5rem !important;
-        top: 0.5rem !important;
+    /* ===== Mobile / Responsive — Ensure sidebar toggle is reachable ===== */
+    @media (max-width: 768px) {
+        [data-testid="collapsedControl"],
+        [data-testid="stSidebarCollapsedControl"] {
+            z-index: 999999 !important;
+        }
+        [data-testid="collapsedControl"] button,
+        [data-testid="stSidebarCollapsedControl"] button {
+            min-width: 44px !important;
+            min-height: 44px !important;
+        }
     }
     </style>
     """, unsafe_allow_html=True)
