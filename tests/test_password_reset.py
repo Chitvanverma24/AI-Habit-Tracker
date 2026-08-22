@@ -78,52 +78,76 @@ class TestPasswordResetRedirectURL(unittest.TestCase):
                     self.assertEqual(url, "https://ai-habbit-tracker.streamlit.app/")
 
     # ============================================================
-    # 2. forgot_password passing redirect_to
+    # 2. forgot_password passing redirect_to & PKCE challenge
     # ============================================================
+    def test_pkce_pair_generation(self):
+        """_generate_pkce_pair generates valid RFC 7636 verifier and base64url challenge."""
+        from auth import _generate_pkce_pair
+        verifier, challenge = _generate_pkce_pair()
+        self.assertEqual(len(verifier), 64)
+        self.assertTrue(len(challenge) > 0)
+        self.assertNotIn("=", challenge)
+
+    def test_pkce_verifier_store_and_candidates(self):
+        """_store_pkce_verifier stores verifiers and _get_candidate_pkce_verifiers returns them."""
+        from auth import _store_pkce_verifier, _get_candidate_pkce_verifiers, _PKCE_VERIFIERS
+        _store_pkce_verifier("test-verifier-1")
+        _store_pkce_verifier("test-verifier-2")
+        candidates = _get_candidate_pkce_verifiers()
+        self.assertIn("test-verifier-1", candidates)
+        self.assertIn("test-verifier-2", candidates)
+
     def test_forgot_password_passes_environment_aware_redirect_to(self):
-        """forgot_password must pass options={'redirect_to': target_url} to Supabase reset_password_email."""
+        """forgot_password must call Supabase recover with PKCE challenge and target redirect URL."""
         mock_db = MagicMock()
         with patch("auth.get_db", return_value=mock_db):
             with patch("auth.get_app_url", return_value="https://ai-habbit-tracker.streamlit.app/"):
                 ok, err = self.auth.forgot_password("user@example.com")
                 self.assertTrue(ok)
                 self.assertIsNone(err)
-                mock_db.auth.reset_password_email.assert_called_once_with(
-                    "user@example.com",
-                    options={"redirect_to": "https://ai-habbit-tracker.streamlit.app/"}
-                )
+                mock_db.auth._request.assert_called_once()
+                call_args, call_kwargs = mock_db.auth._request.call_args
+                self.assertEqual(call_args[0], "POST")
+                self.assertEqual(call_args[1], "recover")
+                self.assertEqual(call_kwargs.get("redirect_to"), "https://ai-habbit-tracker.streamlit.app/")
+                self.assertEqual(call_kwargs.get("body", {}).get("email"), "user@example.com")
+                self.assertIn("code_challenge", call_kwargs.get("body", {}))
+                self.assertEqual(call_kwargs.get("body", {}).get("code_challenge_method"), "s256")
 
     def test_forgot_password_passes_custom_redirect_url(self):
-        """If explicit redirect_url is passed, use it."""
+        """If explicit redirect_url is passed, use it with PKCE challenge."""
         mock_db = MagicMock()
         with patch("auth.get_db", return_value=mock_db):
             ok, err = self.auth.forgot_password("user@example.com", redirect_url="http://localhost:8501/")
             self.assertTrue(ok)
-            mock_db.auth.reset_password_email.assert_called_once_with(
-                "user@example.com",
-                options={"redirect_to": "http://localhost:8501/"}
-            )
+            mock_db.auth._request.assert_called_once()
+            _, call_kwargs = mock_db.auth._request.call_args
+            self.assertEqual(call_kwargs.get("redirect_to"), "http://localhost:8501/")
 
     # ============================================================
     # 3. PKCE Code Exchange (exchange_code)
     # ============================================================
     def test_exchange_code_success(self):
-        """exchange_code must exchange code for session and populate session state."""
+        """exchange_code must exchange code for session with candidate verifier and populate session state."""
         mock_db = MagicMock()
         mock_user = MagicMock(id="user-pkce", email="pkce@example.com")
         mock_session = MagicMock(access_token="pkce-token")
         mock_resp = MagicMock(user=mock_user, session=mock_session)
         mock_db.auth.exchange_code_for_session.return_value = mock_resp
 
-        session = MockSessionState({})
+        session = MockSessionState({"_pkce_code_verifier": "my-pkce-verifier"})
         with patch("streamlit.session_state", session):
             with patch("auth.get_db", return_value=mock_db):
                 ok, res = self.auth.exchange_code("valid-auth-code")
                 self.assertTrue(ok)
-                mock_db.auth.exchange_code_for_session.assert_called_once_with({"auth_code": "valid-auth-code"})
+                mock_db.auth.exchange_code_for_session.assert_called_with({
+                    "auth_code": "valid-auth-code",
+                    "code_verifier": "my-pkce-verifier"
+                })
                 self.assertEqual(session.get("auth_user_id"), "user-pkce")
                 self.assertEqual(session.get("auth_user_email"), "pkce@example.com")
                 self.assertEqual(session.get("auth_token"), "pkce-token")
+                self.assertTrue(session.get("is_password_recovery"))
 
     # ============================================================
     # 4. OTP / Token Hash Verification (verify_recovery_token)

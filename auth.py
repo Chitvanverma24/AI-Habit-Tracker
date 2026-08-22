@@ -36,6 +36,40 @@ class Role:
         return permissions_matrix.get(role_name.lower(), {cls.USER})
 
 
+import time
+import secrets
+import hashlib
+import base64
+
+# Process-level PKCE verifiers store (shared within Python process across browser tabs)
+_PKCE_VERIFIERS: dict[str, float] = {}  # {verifier_string: timestamp}
+
+
+def _generate_pkce_pair() -> tuple[str, str]:
+    """Generates a high-entropy PKCE code_verifier and code_challenge (RFC 7636)."""
+    charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~"
+    verifier = "".join(secrets.choice(charset) for _ in range(64))
+    sha256_hash = hashlib.sha256(verifier.encode("utf-8")).digest()
+    challenge = base64.urlsafe_b64encode(sha256_hash).rstrip(b"=").decode("utf-8")
+    return verifier, challenge
+
+
+def _store_pkce_verifier(verifier: str) -> None:
+    """Stores verifier with timestamp and prunes expired entries (>1 hour)."""
+    now = time.time()
+    for k in list(_PKCE_VERIFIERS.keys()):
+        if now - _PKCE_VERIFIERS[k] > 3600:
+            _PKCE_VERIFIERS.pop(k, None)
+    _PKCE_VERIFIERS[verifier] = now
+
+
+def _get_candidate_pkce_verifiers() -> list[str]:
+    """Returns candidate verifiers sorted by most recent first."""
+    now = time.time()
+    valid = [k for k, ts in _PKCE_VERIFIERS.items() if now - ts <= 3600]
+    return sorted(valid, key=lambda k: _PKCE_VERIFIERS[k], reverse=True)
+
+
 def get_app_url() -> str:
     """
     Returns the appropriate application base URL for redirects (e.g. password resets).
@@ -206,26 +240,85 @@ class AuthManager:
         return True
 
     def forgot_password(self, email: str, redirect_url: Optional[str] = None):
-        """Send password reset email with environment-aware redirect URL. Returns (success: bool, error_msg?)."""
+        """Send password reset email using Supabase PKCE flow with environment-aware redirect URL. Returns (success: bool, error_msg?)."""
         try:
             target_url = redirect_url or get_app_url()
             if target_url and not target_url.endswith("/"):
                 target_url = f"{target_url}/"
 
-            options = {}
-            if target_url:
-                options["redirect_to"] = target_url
+            # 1. Generate and store PKCE verifier & challenge
+            verifier, challenge = _generate_pkce_pair()
+            _store_pkce_verifier(verifier)
 
-            self.db.auth.reset_password_email(email.strip().lower(), options=options)
+            if hasattr(st, "session_state"):
+                st.session_state["_pkce_code_verifier"] = verifier
+
+            try:
+                self.db.auth._storage.set_item(
+                    f"{self.db.auth._storage_key}-code-verifier", verifier
+                )
+            except Exception:
+                pass
+
+            clean_email = email.strip().lower()
+
+            # 2. Call Supabase Auth /recover with PKCE code_challenge & code_challenge_method
+            try:
+                self.db.auth._request(
+                    "POST",
+                    "recover",
+                    body={
+                        "email": clean_email,
+                        "code_challenge": challenge,
+                        "code_challenge_method": "s256",
+                    },
+                    query={"code_challenge": challenge, "code_challenge_method": "s256"},
+                    redirect_to=target_url,
+                )
+            except Exception:
+                # Fallback to standard client method if custom _request format raises
+                options = {"redirect_to": target_url} if target_url else {}
+                self.db.auth.reset_password_email(clean_email, options=options)
+
             return True, None
         except Exception as e:
             return False, self._format_auth_error(e)
 
     def exchange_code(self, auth_code: str):
-        """Exchange PKCE authorization code for an authenticated session."""
+        """Exchange PKCE authorization code (?code=...) for an authenticated session."""
         try:
+            clean_code = auth_code.strip()
             client = self.db
-            response = client.auth.exchange_code_for_session({"auth_code": auth_code.strip()})
+
+            # Build list of candidate verifiers
+            candidates = []
+            if hasattr(st, "session_state") and "_pkce_code_verifier" in st.session_state:
+                candidates.append(st.session_state["_pkce_code_verifier"])
+            try:
+                stored = client.auth._storage.get_item(f"{client.auth._storage_key}-code-verifier")
+                if stored and stored not in candidates:
+                    candidates.append(stored)
+            except Exception:
+                pass
+            for v in _get_candidate_pkce_verifiers():
+                if v not in candidates:
+                    candidates.append(v)
+            if not candidates:
+                candidates.append(None)
+
+            last_err = None
+            response = None
+            for verifier in candidates:
+                try:
+                    params = {"auth_code": clean_code}
+                    if verifier:
+                        params["code_verifier"] = verifier
+                    response = client.auth.exchange_code_for_session(params)
+                    if response and hasattr(response, "user") and response.user:
+                        break
+                except Exception as e:
+                    last_err = e
+
             if response and hasattr(response, "user") and response.user:
                 user = response.user
                 session = getattr(response, "session", None)
@@ -241,7 +334,10 @@ class AuthManager:
                         except Exception:
                             pass
                     st.session_state["_supabase_client"] = client
-            return True, response
+                    st.session_state["is_password_recovery"] = True
+                return True, response
+            else:
+                return False, self._format_auth_error(last_err or Exception("Failed to exchange authorization code."))
         except Exception as e:
             return False, self._format_auth_error(e)
 
