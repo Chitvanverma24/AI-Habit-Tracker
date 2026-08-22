@@ -18,7 +18,9 @@ import ui_components
 
 @st.cache_data(show_spinner=False)
 def get_exportable_data(user_id: str) -> str:
-    data = utils.app_summary()
+    if not user_id:
+        return "{}"
+    data = utils.app_summary(user_id)
     return json.dumps(data, default=str, indent=4)
 
 

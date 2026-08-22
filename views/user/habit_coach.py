@@ -35,14 +35,16 @@ def fetch_active_habits(user_id: str) -> List[Dict[str, Any]]:
 
 @st.cache_data(show_spinner=False, ttl=300)
 def build_user_context(user_id: str) -> str:
-    stats = utils.get_dashboard_statistics()
+    if not user_id:
+        return "No user data available."
+    stats = utils.get_dashboard_statistics(user_id)
     active_habits = fetch_active_habits(user_id)
-    journals = utils.get_recent_journal_entries(limit=3)
-    achievements = utils.get_user_achievements(limit=3)
+    journals = utils.get_recent_journal_entries(limit=3, user_id=user_id)
+    achievements = utils.get_user_achievements(limit=3, user_id=user_id)
 
     context = [
         "--- USER DATA CONTEXT ---",
-        f"Name: {utils.get_display_name()}",
+        f"Name: {utils.get_display_name(user_id)}",
         f"Current Streak: {stats['current_streak']} days",
         f"Longest Streak: {stats['longest_streak']} days",
         f"Today's Completion Rate: {stats['completion_percentage']}%",
@@ -105,6 +107,10 @@ def generate_ai_response(user_message: str, context: str) -> str:
 
         genai.configure(api_key=api_key)
         selected_model = utils.get_setting("selected_ai_model", "gemini-1.5-flash")
+        conversation = "\n".join(
+            f"{'Coach' if m['role'] == 'assistant' else 'User'}: {m['content']}"
+            for m in st.session_state.get("coach_messages", [])[-6:]
+        )
         try:
             model = genai.GenerativeModel(selected_model)
             prompt = f"{get_system_prompt(context)}\n\nConversation History:\n{conversation}\n\nCurrent User Question:\n{user_message}"
@@ -123,10 +129,11 @@ def generate_ai_response(user_message: str, context: str) -> str:
 
 
 def clear_chat_history() -> None:
+    user_name = utils.get_display_name()
     st.session_state.coach_messages = [
         {
             "role": "assistant",
-            "content": f"Chat cleared. I'm ready for a fresh start, {utils.get_display_name()}! How can I support you?"
+            "content": f"Chat cleared. I'm ready for a fresh start, {user_name}! How can I support you?"
         }
     ]
     st.rerun()
@@ -140,8 +147,8 @@ def export_chat_history() -> str:
     return export_text
 
 
-def render_top_stats() -> None:
-    stats = utils.get_dashboard_statistics()
+def render_top_stats(user_id: str) -> None:
+    stats = utils.get_dashboard_statistics(user_id)
     with st.expander("📊 Your Progress & Quick Actions", expanded=False):
         col1, col2, col3, col4, col5 = st.columns(5)
         with col1:
@@ -218,7 +225,7 @@ def main() -> None:
     if "GEMINI_API_KEY" not in st.secrets:
         st.warning("⚠️ Gemini API key not found in secrets. Chat functionality will not work until a key is added.")
 
-    render_top_stats()
+    render_top_stats(user_id)
     render_chat_and_input(user_id)
 
 

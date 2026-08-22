@@ -33,6 +33,7 @@ def create_habit(title: str, description: str, frequency: str, target_count: int
             "created_at": now_str,
             "updated_at": now_str
         }).execute()
+        get_active_habits_count.clear()
         utils.clear_user_caches()
         return True
     except Exception:
@@ -42,6 +43,8 @@ def create_habit(title: str, description: str, frequency: str, target_count: int
 
 @st.cache_data(ttl=60, show_spinner=False)
 def get_active_habits_count(user_id: str) -> int:
+    if not user_id:
+        return 0
     db = get_db()
     try:
         resp = db.table("habits").select("id", count="exact").eq("user_id", user_id).eq("is_active", True).execute()

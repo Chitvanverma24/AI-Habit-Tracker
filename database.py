@@ -56,18 +56,45 @@ def _normalize_jwt_key(key: Optional[str]) -> Optional[str]:
     return key
 
 
-# Cached Supabase Client (Anon/Publishable Key for general operations)
+# Per-Session Supabase Client (Anon/Publishable Key for general operations)
 
-@st.cache_resource(show_spinner=False)
 def get_db() -> Client:
-    """Returns a cached Supabase client instance using publishable key."""
+    """Returns a Supabase client instance.
+    When running in Streamlit, the client is strictly scoped to the active
+    user's session in st.session_state to ensure complete session isolation
+    between concurrent browsers and users."""
+    # 1. Check if an active per-session client exists in st.session_state
+    try:
+        if hasattr(st, "session_state"):
+            if "_supabase_client" in st.session_state and st.session_state["_supabase_client"] is not None:
+                return st.session_state["_supabase_client"]
+    except Exception:
+        pass
+
+    # 2. Initialize a fresh client
     url = _get_secret_value("SUPABASE_URL", "supabase_url", "URL")
     key = _get_secret_value("SUPABASE_KEY", "supabase_key", "KEY", "SUPABASE_ANON_KEY")
     if not url or not key:
         # Fallback to direct indexing if available
         url = st.secrets["SUPABASE_URL"]
         key = st.secrets["SUPABASE_KEY"]
-    return create_client(url, key)
+
+    client = create_client(url, key)
+
+    # 3. If authenticated in current session, attach session token to postgrest
+    try:
+        if hasattr(st, "session_state"):
+            token = st.session_state.get("auth_token")
+            if token:
+                try:
+                    client.postgrest.auth(token)
+                except Exception:
+                    pass
+            st.session_state["_supabase_client"] = client
+    except Exception:
+        pass
+
+    return client
 
 
 @st.cache_resource(show_spinner=False)

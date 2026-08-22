@@ -31,6 +31,8 @@ def init_session_state() -> None:
 
 @st.cache_data(ttl=60, show_spinner=False)
 def fetch_all_journals(user_id: str) -> List[Dict[str, Any]]:
+    if not user_id:
+        return []
     db = get_db()
     try:
         response = db.table("journal_entries").select("*").eq("user_id", user_id).order("entry_date", desc=True).execute()

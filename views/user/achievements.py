@@ -18,6 +18,8 @@ def init_session_state() -> None:
 
 @st.cache_data(ttl=60, show_spinner=False)
 def fetch_total_completed_habits(user_id: str) -> int:
+    if not user_id:
+        return 0
     try:
         db = get_db()
         response = db.table("habit_logs").select("id", count="exact").eq("user_id", user_id).eq("status", "completed").execute()
@@ -27,6 +29,8 @@ def fetch_total_completed_habits(user_id: str) -> int:
 
 @st.cache_data(ttl=60, show_spinner=False)
 def fetch_total_active_days(user_id: str) -> int:
+    if not user_id:
+        return 0
     try:
         db = get_db()
         response = db.table("habit_logs").select("log_date").eq("user_id", user_id).eq("status", "completed").execute()
@@ -42,7 +46,7 @@ def refresh_data() -> None:
     st.rerun()
 
 def get_user_metrics(user_id: str) -> Dict[str, int]:
-    stats = utils.get_dashboard_statistics()
+    stats = utils.get_dashboard_statistics(user_id)
     return {
         "total_habits": stats.get("total_habits", 0),
         "longest_streak": stats.get("longest_streak", 0),
@@ -261,7 +265,7 @@ def main() -> None:
         st.error("User not authenticated.")
         return
         
-    earned_entries = utils.get_user_achievements()
+    earned_entries = utils.get_user_achievements(user_id=user_id)
     metrics = get_user_metrics(user_id)
     new_entries = process_new_achievements(user_id, earned_entries, metrics)
     if new_entries:

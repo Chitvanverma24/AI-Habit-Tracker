@@ -211,12 +211,11 @@ def check_email_has_active_license(email: str, license_key: Optional[str] = None
 
 
 @st.cache_data(ttl=60, show_spinner=False)
-def check_user_license(user_id: str, email: Optional[str] = None) -> Optional[Dict[str, Any]]:
-    """Check if a user has an active license. Returns license dict or None."""
+def _fetch_user_license(user_id: str, clean_email: str) -> Optional[Dict[str, Any]]:
+    """Internal cached helper for checking user license by user_id and email."""
     if not user_id:
         return None
 
-    user_email = normalize_email(email or auth.get_user_email())
     db = get_db()
 
     # Check by assigned_user_id or activated_by first
@@ -235,12 +234,12 @@ def check_user_license(user_id: str, email: Optional[str] = None) -> Optional[Di
         pass
 
     # Check by assigned_email if user_email is present
-    if user_email:
+    if clean_email:
         try:
             response_email = (
                 db.table("licenses")
                 .select("*")
-                .ilike("assigned_email", user_email)
+                .ilike("assigned_email", clean_email)
                 .eq("status", "active")
                 .limit(1)
                 .execute()
@@ -251,12 +250,20 @@ def check_user_license(user_id: str, email: Optional[str] = None) -> Optional[Di
                 if user_id and not lic.get("assigned_user_id"):
                     lic_key = lic.get("license_key")
                     if lic_key:
-                        activate_purchase_key(lic_key, user_email, user_id)
+                        activate_purchase_key(lic_key, clean_email, user_id)
                 return lic
         except Exception:
             pass
 
     return None
+
+
+def check_user_license(user_id: str, email: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """Check if a user has an active license. Returns license dict or None."""
+    if not user_id:
+        return None
+    clean_email = normalize_email(email or auth.get_user_email())
+    return _fetch_user_license(user_id, clean_email)
 
 
 

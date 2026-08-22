@@ -39,6 +39,8 @@ def init_session_state() -> None:
 @st.cache_data(show_spinner=False, ttl=60)
 def fetch_user_habits(user_id: str) -> List[Dict[str, Any]]:
     """Fetches all habits for the user from Supabase."""
+    if not user_id:
+        return []
     db = get_db()
     try:
         response = (
@@ -48,16 +50,17 @@ def fetch_user_habits(user_id: str) -> List[Dict[str, Any]]:
             .order("created_at", desc=True)
             .execute()
         )
-        return response.data
+        return response.data or []
     except Exception:
         return []
 
 
 @st.cache_data(show_spinner=False, ttl=60)
-def fetch_today_completed_ids(user_id: str) -> Set[str]:
+def fetch_today_completed_ids(user_id: str, today_str: str) -> Set[str]:
     """Fetches habit IDs completed today to prevent N+1 query issues."""
+    if not user_id:
+        return set()
     db = get_db()
-    today_str = utils.today().isoformat()
     try:
         response = (
             db.table("habit_logs")
@@ -67,7 +70,7 @@ def fetch_today_completed_ids(user_id: str) -> Set[str]:
             .eq("status", "completed")
             .execute()
         )
-        return {r["habit_id"] for r in response.data}
+        return {r["habit_id"] for r in response.data} if response.data else set()
     except Exception:
         return set()
 
@@ -661,7 +664,7 @@ def main() -> None:
         st.stop()
         
     raw_habits = fetch_user_habits(user_id)
-    completed_ids = fetch_today_completed_ids(user_id)
+    completed_ids = fetch_today_completed_ids(user_id, utils.today().isoformat())
     can_create = check_can_create_habit(raw_habits)
     
     render_header(can_create)

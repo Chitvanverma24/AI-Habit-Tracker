@@ -37,7 +37,8 @@ class Role:
 
 
 class AuthManager:
-    """Handles all authentication and Role-Based Access Control (RBAC)."""
+    """Handles all authentication and Role-Based Access Control (RBAC).
+    Guarantees strict per-session user isolation in Streamlit."""
 
     @property
     def db(self):
@@ -64,18 +65,34 @@ class AuthManager:
     # --- Core Auth Operations ---
 
     def login(self, email: str, password: str):
-        """Login existing user. Returns (success: bool, result)."""
+        """Login user and bind authenticated session strictly to the current st.session_state."""
         try:
-            response = self.db.auth.sign_in_with_password({
+            client = self.db
+            response = client.auth.sign_in_with_password({
                 "email": email.strip().lower(),
                 "password": password
             })
+            if response and hasattr(response, "user") and response.user:
+                user = response.user
+                session = getattr(response, "session", None)
+                if hasattr(st, "session_state"):
+                    st.session_state["auth_user"] = user
+                    st.session_state["auth_session"] = session
+                    st.session_state["auth_user_id"] = user.id
+                    st.session_state["auth_user_email"] = user.email
+                    if session and hasattr(session, "access_token"):
+                        st.session_state["auth_token"] = session.access_token
+                        try:
+                            client.postgrest.auth(session.access_token)
+                        except Exception:
+                            pass
+                    st.session_state["_supabase_client"] = client
             return True, response
         except Exception as e:
             return False, self._format_auth_error(e)
 
     def signup(self, email: str, password: str, display_name: str):
-        """Register a new user. Returns (success: bool, result)."""
+        """Register a new user. If session is returned, bind to current st.session_state."""
         try:
             import utils
             if not utils.get_setting("registration_enabled", True):
@@ -84,7 +101,8 @@ class AuthManager:
             pass
 
         try:
-            response = self.db.auth.sign_up({
+            client = self.db
+            response = client.auth.sign_up({
                 "email": email.strip().lower(),
                 "password": password,
                 "options": {
@@ -94,17 +112,46 @@ class AuthManager:
             if response and hasattr(response, "user") and response.user:
                 if hasattr(response.user, "identities") and response.user.identities == []:
                     return False, "An account with this email address already exists. Please Sign In."
+                session = getattr(response, "session", None)
+                if session and hasattr(st, "session_state"):
+                    st.session_state["auth_user"] = response.user
+                    st.session_state["auth_session"] = session
+                    st.session_state["auth_user_id"] = response.user.id
+                    st.session_state["auth_user_email"] = response.user.email
+                    if hasattr(session, "access_token"):
+                        st.session_state["auth_token"] = session.access_token
+                        try:
+                            client.postgrest.auth(session.access_token)
+                        except Exception:
+                            pass
+                    st.session_state["_supabase_client"] = client
             return True, response
         except Exception as e:
             return False, self._format_auth_error(e)
 
     def logout(self):
-        """Sign out current user."""
+        """Sign out current user and completely wipe per-session auth state."""
         try:
-            self.db.auth.sign_out()
-            return True
+            if hasattr(st, "session_state") and "_supabase_client" in st.session_state:
+                try:
+                    st.session_state["_supabase_client"].auth.sign_out()
+                except Exception:
+                    pass
         except Exception:
-            return False
+            pass
+
+        if hasattr(st, "session_state"):
+            for k in ["auth_user", "auth_session", "auth_user_id", "auth_user_email", "auth_token", "_supabase_client"]:
+                st.session_state.pop(k, None)
+            st.session_state.clear()
+
+        try:
+            import utils
+            utils.clear_user_caches()
+        except Exception:
+            pass
+
+        return True
 
     def forgot_password(self, email: str):
         """Send password reset email. Returns (success: bool, error_msg?)."""
@@ -134,53 +181,50 @@ class AuthManager:
     # --- Session & User Queries ---
 
     def get_session(self):
-        """Return current auth session or None."""
-        try:
-            return self.db.auth.get_session()
-        except Exception:
-            return None
+        """Return current per-session auth session or None."""
+        if hasattr(st, "session_state"):
+            return st.session_state.get("auth_session")
+        return None
 
     def get_user(self):
-        """Return current auth user object or None."""
-        try:
-            return self.db.auth.get_user()
-        except Exception:
-            return None
+        """Return current per-session auth user object or None."""
+        if hasattr(st, "session_state"):
+            user = st.session_state.get("auth_user")
+            if user is not None:
+                class UserWrapper:
+                    def __init__(self, u):
+                        self.user = u
+                return UserWrapper(user)
+        return None
 
     def is_authenticated(self) -> bool:
-        """Check whether a user is logged in."""
-        return self.get_session() is not None
+        """Check whether the current Streamlit session has an active logged-in user."""
+        if hasattr(st, "session_state"):
+            return bool(st.session_state.get("auth_user_id"))
+        return False
 
-    def get_user_id(self):
-        """Return the current user's UUID or None."""
-        user = self.get_user()
-        if user is None:
-            return None
-        try:
-            return user.user.id
-        except Exception:
-            return None
+    def get_user_id(self) -> Optional[str]:
+        """Return the current session's user UUID or None."""
+        if hasattr(st, "session_state"):
+            return st.session_state.get("auth_user_id")
+        return None
 
-    def get_user_email(self):
-        """Return the current user's email or None."""
-        user = self.get_user()
-        if user is None:
-            return None
-        try:
-            return user.user.email
-        except Exception:
-            return None
+    def get_user_email(self) -> Optional[str]:
+        """Return the current session's user email or None."""
+        if hasattr(st, "session_state"):
+            return st.session_state.get("auth_user_email")
+        return None
 
     # --- Profile & Role RBAC ---
 
     def get_profile(self):
-        """Fetch current user's profile from the database (cached in session)."""
+        """Fetch current user's profile from the database (cached in current session)."""
         user_id = self.get_user_id()
-        if user_id is None:
+        if not user_id:
             return None
         # Cache in session state to avoid repeated DB calls per page render
         cache_key = f"_profile_cache_{user_id}"
-        if cache_key in st.session_state:
+        if hasattr(st, "session_state") and cache_key in st.session_state:
             return st.session_state[cache_key]
         try:
             response = (
@@ -191,13 +235,16 @@ class AuthManager:
                 .execute()
             )
             profile = response.data
-            st.session_state[cache_key] = profile
+            if hasattr(st, "session_state"):
+                st.session_state[cache_key] = profile
             return profile
         except Exception:
             return None
 
     def get_user_role(self) -> str:
         """Return the current user's assigned role string."""
+        if not self.is_authenticated():
+            return Role.USER
         profile = self.get_profile()
         if not profile:
             return Role.USER
@@ -207,6 +254,8 @@ class AuthManager:
 
     def has_role(self, *allowed_roles: str) -> bool:
         """Check if user has any of the specified roles or is Admin."""
+        if not self.is_authenticated():
+            return False
         user_role = self.get_user_role()
         if user_role == Role.ADMIN:
             return True
@@ -215,12 +264,16 @@ class AuthManager:
 
     def has_permission(self, permission: str) -> bool:
         """Check if current user's role grants a specific permission."""
+        if not self.is_authenticated():
+            return False
         user_role = self.get_user_role()
         perms = Role.get_permissions(user_role)
         return "*" in perms or permission in perms
 
     def is_admin(self) -> bool:
         """Check if current user has admin privileges (backward compatible)."""
+        if not self.is_authenticated():
+            return False
         return self.has_role(Role.ADMIN)
 
     # --- Route Protection & Guards ---
@@ -253,15 +306,26 @@ class AuthManager:
 
     def refresh_session(self):
         """Refresh the authentication session token."""
+        if not self.is_authenticated():
+            return None
         try:
-            return self.db.auth.refresh_session()
+            refreshed = self.db.auth.refresh_session()
+            if refreshed and hasattr(refreshed, "session") and refreshed.session and hasattr(st, "session_state"):
+                st.session_state["auth_session"] = refreshed.session
+                if hasattr(refreshed.session, "access_token"):
+                    st.session_state["auth_token"] = refreshed.session.access_token
+                    try:
+                        self.db.postgrest.auth(refreshed.session.access_token)
+                    except Exception:
+                        pass
+            return refreshed
         except Exception:
             return None
 
     def clear_profile_cache(self):
         """Clear the cached profile data for the current user."""
         user_id = self.get_user_id()
-        if user_id:
+        if user_id and hasattr(st, "session_state"):
             cache_key = f"_profile_cache_{user_id}"
             st.session_state.pop(cache_key, None)
 

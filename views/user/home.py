@@ -14,41 +14,53 @@ import utils
 
 def complete_habit(habit_id: str) -> None:
     db = get_db()
+    uid = utils.get_current_user_id()
+    if not uid:
+        return
     try:
         db.table("habit_logs").insert({
             "habit_id": habit_id,
-            "user_id": utils.get_current_user_id(),
+            "user_id": uid,
             "log_date": utils.today().isoformat(),
             "status": "completed",
             "created_at": utils.now().isoformat(),
             "updated_at": utils.now().isoformat()
         }).execute()
+        get_completed_ids.clear()
         utils.clear_user_caches()
         st.rerun()
     except Exception:
         st.error("Failed to log habit completion.")
+        get_completed_ids.clear()
         utils.clear_user_caches()
         st.rerun()
 
 
 def undo_completion(habit_id: str) -> None:
     db = get_db()
+    uid = utils.get_current_user_id()
+    if not uid:
+        return
     try:
         db.table("habit_logs").delete() \
             .eq("habit_id", habit_id) \
-            .eq("user_id", utils.get_current_user_id()) \
+            .eq("user_id", uid) \
             .eq("log_date", utils.today().isoformat()) \
             .eq("status", "completed").execute()
+        get_completed_ids.clear()
         utils.clear_user_caches()
         st.rerun()
     except Exception:
         st.error("Failed to undo habit completion.")
+        get_completed_ids.clear()
         utils.clear_user_caches()
         st.rerun()
 
 
 @st.cache_data(ttl=60, show_spinner=False)
 def get_completed_ids(user_id: str) -> set:
+    if not user_id:
+        return set()
     db = get_db()
     try:
         resp = db.table("habit_logs").select("habit_id").eq("user_id", user_id).eq("log_date", utils.today().isoformat()).eq("status", "completed").execute()
