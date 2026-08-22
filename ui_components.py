@@ -504,9 +504,15 @@ def inject_global_css():
         color: #475569;
     }
 
-    /* ===== Sidebar Toggle Button — Dark Blue + White Icon ===== */
+    /* ===== Sidebar Toggle Buttons — Dark Blue + White Icon ===== */
+    /* Streamlit 1.58.0 uses these data-testid values:
+       - stSidebarCollapseButton: wrapper div inside open sidebar header
+       - stBaseButton-headerNoPadding: the actual button element (both collapse and expand)
+       - stExpandSidebarButton: the expand button wrapper in the app header toolbar
+       - stToolbar: toolbar container in the app header (hosts expand button) */
 
-    /* Collapse button (inside open sidebar) */
+    /* --- Collapse button (inside open sidebar) --- */
+    [data-testid="stSidebar"] [data-testid="stSidebarCollapseButton"] button,
     [data-testid="stSidebar"] button[data-testid="stBaseButton-headerNoPadding"] {
         background-color: #1e3a8a !important;
         color: #ffffff !important;
@@ -516,10 +522,13 @@ def inject_global_css():
         visibility: visible !important;
         pointer-events: auto !important;
     }
+    [data-testid="stSidebar"] [data-testid="stSidebarCollapseButton"] button:hover,
     [data-testid="stSidebar"] button[data-testid="stBaseButton-headerNoPadding"]:hover {
         background-color: #1d4ed8 !important;
         border-color: #2563eb !important;
     }
+    [data-testid="stSidebar"] [data-testid="stSidebarCollapseButton"] svg,
+    [data-testid="stSidebar"] [data-testid="stSidebarCollapseButton"] svg path,
     [data-testid="stSidebar"] button[data-testid="stBaseButton-headerNoPadding"] svg,
     [data-testid="stSidebar"] button[data-testid="stBaseButton-headerNoPadding"] svg path {
         color: #ffffff !important;
@@ -527,15 +536,41 @@ def inject_global_css():
         stroke: #ffffff !important;
     }
 
-    /* Expand/reopen control (visible when sidebar is collapsed) —
-       Streamlit uses various data-testid names across versions. */
-    [data-testid="collapsedControl"],
-    [data-testid="stSidebarCollapsedControl"] {
+    /* --- Expand/reopen button (in app header when sidebar is collapsed) --- */
+    [data-testid="stExpandSidebarButton"],
+    [data-testid="stExpandSidebarButton"] button,
+    [data-testid="stExpandSidebarButton"] button[data-testid="stBaseButton-headerNoPadding"] {
+        background-color: #1e3a8a !important;
+        color: #ffffff !important;
+        border: 1px solid #1e40af !important;
+        border-radius: 6px !important;
+        opacity: 1 !important;
+        visibility: visible !important;
+        pointer-events: auto !important;
+        cursor: pointer !important;
+        min-width: 32px !important;
+        min-height: 32px !important;
+    }
+    [data-testid="stExpandSidebarButton"] button:hover,
+    [data-testid="stExpandSidebarButton"] button[data-testid="stBaseButton-headerNoPadding"]:hover {
+        background-color: #1d4ed8 !important;
+        border-color: #2563eb !important;
+    }
+    [data-testid="stExpandSidebarButton"] svg,
+    [data-testid="stExpandSidebarButton"] svg path {
+        color: #ffffff !important;
+        fill: #ffffff !important;
+        stroke: #ffffff !important;
+    }
+
+    /* Ensure the toolbar container hosting the expand button is visible */
+    header[data-testid="stHeader"] [data-testid="stToolbar"] {
         visibility: visible !important;
         opacity: 1 !important;
-        z-index: 999999 !important;
         pointer-events: auto !important;
     }
+
+    /* Legacy Streamlit selectors (older versions) — keep for forward/backward compat */
     [data-testid="collapsedControl"] button,
     [data-testid="stSidebarCollapsedControl"] button {
         background-color: #1e3a8a !important;
@@ -549,26 +584,18 @@ def inject_global_css():
         min-width: 32px !important;
         min-height: 32px !important;
     }
-    [data-testid="collapsedControl"] button:hover,
-    [data-testid="stSidebarCollapsedControl"] button:hover {
-        background-color: #1d4ed8 !important;
-        border-color: #2563eb !important;
-    }
     [data-testid="collapsedControl"] svg,
-    [data-testid="stSidebarCollapsedControl"] svg,
     [data-testid="collapsedControl"] svg path,
+    [data-testid="stSidebarCollapsedControl"] svg,
     [data-testid="stSidebarCollapsedControl"] svg path {
         color: #ffffff !important;
         fill: #ffffff !important;
         stroke: #ffffff !important;
     }
 
-    /* ===== Mobile / Responsive — Ensure sidebar toggle is reachable ===== */
+    /* ===== Mobile / Responsive — Larger touch targets ===== */
     @media (max-width: 768px) {
-        [data-testid="collapsedControl"],
-        [data-testid="stSidebarCollapsedControl"] {
-            z-index: 999999 !important;
-        }
+        [data-testid="stExpandSidebarButton"] button,
         [data-testid="collapsedControl"] button,
         [data-testid="stSidebarCollapsedControl"] button {
             min-width: 44px !important;
