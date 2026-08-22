@@ -229,6 +229,36 @@ class TestPasswordResetRedirectURL(unittest.TestCase):
                         mock_verify.assert_called_once_with("hash-abc")
                         self.assertTrue(mock_session_state.get("is_password_recovery"))
 
+    def test_handle_auth_redirects_with_access_token(self):
+        """When query params contain access_token=... (from hash bridge), establish session and enter recovery mode."""
+        from app import handle_auth_redirects
+        mock_query_params = MockSessionState({"access_token": "jwt-token-123", "refresh_token": "ref-123", "type": "recovery"})
+        mock_session_state = MockSessionState({})
+
+        with patch("streamlit.query_params", mock_query_params):
+            with patch("streamlit.session_state", mock_session_state):
+                with patch.object(self.auth, "set_auth_session", return_value=(True, MagicMock())) as mock_set_session:
+                    with patch("app.auth", self.auth):
+                        is_recovery = handle_auth_redirects()
+                        self.assertTrue(is_recovery)
+                        mock_set_session.assert_called_once_with("jwt-token-123", "ref-123")
+                        self.assertTrue(mock_session_state.get("is_password_recovery"))
+
+    def test_handle_auth_redirects_invalid_access_token(self):
+        """When access_token fails to establish session, set user-friendly error and stay on login."""
+        from app import handle_auth_redirects
+        mock_query_params = MockSessionState({"access_token": "expired-token"})
+        mock_session_state = MockSessionState({})
+
+        with patch("streamlit.query_params", mock_query_params):
+            with patch("streamlit.session_state", mock_session_state):
+                with patch.object(self.auth, "set_auth_session", return_value=(False, "JWT expired")):
+                    with patch("app.auth", self.auth):
+                        is_recovery = handle_auth_redirects()
+                        self.assertFalse(is_recovery)
+                        self.assertIn("auth_error", mock_session_state)
+
 
 if __name__ == "__main__":
     unittest.main()
+

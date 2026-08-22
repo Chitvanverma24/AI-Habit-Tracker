@@ -97,7 +97,7 @@ def render_license_gate() -> None:
 
 def handle_auth_redirects() -> bool:
     """
-    Inspects st.query_params for auth callbacks (PKCE code, recovery tokens, errors).
+    Inspects st.query_params for auth callbacks (PKCE code, recovery tokens, access tokens, errors).
     Sets up session state if valid, or captures error messages.
     Returns True if the app is currently in password recovery mode.
     """
@@ -117,11 +117,17 @@ def handle_auth_redirects() -> bool:
             st.session_state["auth_error"] = f"Password reset error: {err_desc}"
         return False
 
-    # 3. Check for PKCE authorization code (?code=...)
+    # Extract all auth query params before any query param modification
     code = st.query_params.get("code")
+    token_hash = st.query_params.get("token_hash") or st.query_params.get("token")
+    access_token = st.query_params.get("access_token")
+    refresh_token = st.query_params.get("refresh_token", "")
+    token_type = st.query_params.get("type", "")
+
+    # 3. Check for PKCE authorization code (?code=...)
     if code:
-        ok, res = auth.exchange_code(code)
         st.query_params.clear()
+        ok, res = auth.exchange_code(code)
         if ok:
             st.session_state["is_password_recovery"] = True
             return True
@@ -130,11 +136,9 @@ def handle_auth_redirects() -> bool:
             return False
 
     # 4. Check for OTP / token_hash (?token_hash=... or ?token=...)
-    token_hash = st.query_params.get("token_hash") or st.query_params.get("token")
-    token_type = st.query_params.get("type")
-    if token_hash and token_type == "recovery":
-        ok, res = auth.verify_recovery_token(token_hash)
+    if token_hash:
         st.query_params.clear()
+        ok, res = auth.verify_recovery_token(token_hash)
         if ok:
             st.session_state["is_password_recovery"] = True
             return True
@@ -143,18 +147,14 @@ def handle_auth_redirects() -> bool:
             return False
 
     # 5. Check for direct access_token (?access_token=...)
-    access_token = st.query_params.get("access_token")
     if access_token:
-        refresh_token = st.query_params.get("refresh_token", "")
-        ok, res = auth.set_auth_session(access_token, refresh_token)
         st.query_params.clear()
+        ok, res = auth.set_auth_session(access_token, refresh_token)
         if ok:
-            if token_type == "recovery" or st.query_params.get("type") == "recovery":
-                st.session_state["is_password_recovery"] = True
-                return True
-            return False
+            st.session_state["is_password_recovery"] = True
+            return True
         else:
-            st.session_state["auth_error"] = f"Failed to establish session: {res}"
+            st.session_state["auth_error"] = f"Failed to establish session: {res}. Please request a new link."
             return False
 
     return False
@@ -176,14 +176,14 @@ def render_password_reset_screen() -> None:
             </span>
         </div>
         <p style="color: #475569; font-size: 0.95rem; margin-top: 0.25rem;">
-            Secure Password Reset
+            Reset your password
         </p>
     </div>
     """, unsafe_allow_html=True)
 
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        st.markdown("##### 🔒 Set New Password")
+        st.markdown("##### Reset your password")
         st.caption("Enter and confirm your new password below.")
 
         with st.form("set_new_password_form"):
@@ -196,16 +196,16 @@ def render_password_reset_screen() -> None:
                 if not new_pwd or not confirm_pwd:
                     st.error("Please fill in both password fields.")
                 elif new_pwd != confirm_pwd:
-                    st.error("Passwords do not match.")
+                    st.error("Passwords do not match. Please ensure both passwords are identical.")
                 elif len(new_pwd) < 6:
-                    st.error("Password must be at least 6 characters.")
+                    st.error("Password must be at least 6 characters long.")
                 else:
                     success, res = auth.update_password(new_pwd)
                     if success:
                         st.session_state.pop("is_password_recovery", None)
                         st.query_params.clear()
                         auth.logout()
-                        st.session_state["auth_success"] = "✅ Password updated successfully! Please sign in with your new password."
+                        st.session_state["auth_success"] = "Password updated successfully! Please sign in with your new password."
                         st.rerun()
                     else:
                         st.error(f"Failed to update password: {res}")
@@ -540,6 +540,7 @@ def route_page() -> None:
 
 def main() -> None:
     ui_components.inject_global_css()
+    ui_components.inject_auth_hash_bridge()
     init_session()
 
     if not check_database_connection():
