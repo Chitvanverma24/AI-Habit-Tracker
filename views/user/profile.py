@@ -46,12 +46,7 @@ def update_profile(display_name: str, timezone: str) -> None:
         st.error(f"Failed to update profile: {e}")
 
 
-def handle_password_reset(email: str) -> None:
-    success, error_msg = auth.forgot_password(email)
-    if success:
-        st.success("Password reset instructions sent to your email!")
-    else:
-        st.error(f"Failed to send reset email: {error_msg}")
+
 
 
 def process_account_deletion() -> None:
@@ -188,7 +183,7 @@ def render_security_tab(email: str, user_id: str) -> None:
     with col1:
         with st.container(border=True):
             st.markdown("### Password Management")
-            st.write("Update your account password or request a reset link.")
+            st.write("Update your account password.")
             with st.expander("🔑 Change Password"):
                 with st.form("change_pwd_form"):
                     new_p = st.text_input("New Password", type="password", key="profile_new_pwd", help="Must be at least 6 characters")
@@ -201,8 +196,6 @@ def render_security_tab(email: str, user_id: str) -> None:
                                 st.success("Password updated successfully!")
                             else:
                                 st.error(f"Failed to update password: {err}")
-            if st.button("Send Password Reset Email", use_container_width=True, key="btn_reset_pwd"):
-                handle_password_reset(email)
 
     with col2:
         with st.container(border=True):

@@ -93,146 +93,13 @@ def render_license_gate() -> None:
 
 
 
-# Authentication & Password Recovery Handlers
 
-def handle_auth_redirects() -> bool:
-    """
-    Inspects st.query_params for auth callbacks (PKCE code, recovery tokens, access tokens, errors).
-    Sets up session state if valid, or captures error messages.
-    Returns True if the app is currently in password recovery mode.
-    """
-    import sys
-
-    # 1. If already flagged in recovery mode in session state
-    if st.session_state.get("is_password_recovery"):
-        print("[app] Password recovery mode already active in session state", file=sys.stderr)
-        return True
-
-    # 2. Check for error in query params (e.g. otp_expired, access_denied)
-    err = st.query_params.get("error")
-    if err:
-        err_code = st.query_params.get("error_code")
-        err_desc = st.query_params.get("error_description") or err_code or err
-        st.query_params.clear()
-        if "otp_expired" in str(err_code) or "otp_expired" in str(err_desc) or "access_denied" in str(err):
-            st.session_state["auth_error"] = "The password reset link has expired or has already been used. Please request a new reset link below."
-        else:
-            st.session_state["auth_error"] = f"Password reset error: {err_desc}"
-        print(f"[app] Auth redirect error detected: {err}", file=sys.stderr)
-        return False
-
-    # Extract all auth query params before any query param modification
-    code = st.query_params.get("code")
-    token_hash = st.query_params.get("token_hash") or st.query_params.get("token")
-    access_token = st.query_params.get("access_token")
-    refresh_token = st.query_params.get("refresh_token", "")
-    token_type = st.query_params.get("type", "")
-
-    # 3. Check for PKCE authorization code (?code=...)
-    if code:
-        print("[app] Recovery callback detected: ?code=... parameter present", file=sys.stderr)
-        st.query_params.clear()
-        ok, res = auth.exchange_code(code)
-        if ok:
-            st.session_state["is_password_recovery"] = True
-            print("[app] Recovery session established — will render password reset screen", file=sys.stderr)
-            return True
-        else:
-            st.session_state["auth_error"] = f"Failed to verify reset link: {res}. Please request a new link."
-            print(f"[app] Recovery code exchange failed — falling through to login", file=sys.stderr)
-            return False
-
-    # 4. Check for OTP / token_hash (?token_hash=... or ?token=...)
-    if token_hash:
-        print("[app] Recovery callback detected: token_hash parameter present", file=sys.stderr)
-        st.query_params.clear()
-        ok, res = auth.verify_recovery_token(token_hash)
-        if ok:
-            st.session_state["is_password_recovery"] = True
-            print("[app] Recovery session established via token_hash", file=sys.stderr)
-            return True
-        else:
-            st.session_state["auth_error"] = f"Failed to verify recovery token: {res}. Please request a new link."
-            return False
-
-    # 5. Check for direct access_token (?access_token=...)
-    if access_token:
-        print("[app] Recovery callback detected: access_token parameter present", file=sys.stderr)
-        st.query_params.clear()
-        ok, res = auth.set_auth_session(access_token, refresh_token)
-        if ok:
-            st.session_state["is_password_recovery"] = True
-            print("[app] Recovery session established via access_token", file=sys.stderr)
-            return True
-        else:
-            st.session_state["auth_error"] = f"Failed to establish session: {res}. Please request a new link."
-            return False
-
-    return False
-
-
-def render_password_reset_screen() -> None:
-    """Renders dedicated Set New Password screen for users resetting their password."""
-    sys_name = utils.get_setting("system_name", "AI Habit Tracker")
-    sys_logo = utils.get_setting("system_logo", "🎯")
-
-    st.markdown(f"""
-    <div style="text-align: center; padding: 2rem 0 1rem 0;">
-        <div style="display: inline-flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem;">
-            <div style="width: 46px; height: 46px; background: linear-gradient(135deg, #2563eb, #1d4ed8);
-                        border-radius: 12px; display: flex; align-items: center; justify-content: center;
-                        font-size: 1.4rem; color: white; font-weight: 800; box-shadow: 0 4px 14px rgba(37, 99, 235, 0.4);">{sys_logo}</div>
-            <span style="font-size: 1.6rem; font-weight: 800; color: #0f172a; letter-spacing: -0.03em;">
-                {sys_name}
-            </span>
-        </div>
-        <p style="color: #475569; font-size: 0.95rem; margin-top: 0.25rem;">
-            Reset your password
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
-
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
-        st.markdown("##### Reset your password")
-        st.caption("Enter and confirm your new password below.")
-
-        with st.form("set_new_password_form"):
-            new_pwd = st.text_input("New Password", type="password", help="Must be at least 6 characters", key="recovery_new_pwd")
-            confirm_pwd = st.text_input("Confirm New Password", type="password", key="recovery_confirm_pwd")
-            st.write("")
-            submit_btn = st.form_submit_button("Update Password", type="primary", use_container_width=True)
-
-            if submit_btn:
-                if not new_pwd or not confirm_pwd:
-                    st.error("Please fill in both password fields.")
-                elif new_pwd != confirm_pwd:
-                    st.error("Passwords do not match. Please ensure both passwords are identical.")
-                elif len(new_pwd) < 6:
-                    st.error("Password must be at least 6 characters long.")
-                else:
-                    success, res = auth.update_password(new_pwd)
-                    if success:
-                        st.session_state.pop("is_password_recovery", None)
-                        st.query_params.clear()
-                        auth.logout()
-                        st.session_state["auth_success"] = "Password updated successfully! Please sign in with your new password."
-                        st.rerun()
-                    else:
-                        st.error(f"Failed to update password: {res}")
-
-        st.write("")
-        if st.button("Cancel & Return to Sign In", use_container_width=True, key="btn_cancel_reset"):
-            st.session_state.pop("is_password_recovery", None)
-            st.query_params.clear()
-            auth.logout()
-            st.rerun()
 
 
 # Authentication UI
 
 def render_auth_ui() -> None:
-    """Renders login, purchase activation, signup, and reset password interface."""
+    """Renders login, purchase activation, and signup interface."""
     sys_name = utils.get_setting("system_name", "AI Habit Tracker")
     sys_logo = utils.get_setting("system_logo", "🎯")
     maint_active = bool(utils.get_setting("maintenance_mode", False))
@@ -257,6 +124,9 @@ def render_auth_ui() -> None:
     if maint_active:
         st.info("🚧 System is currently under maintenance. Only Administrators can sign in.")
 
+    if "signup_notice" in st.session_state:
+        st.info(st.session_state.pop("signup_notice"))
+
     if "auth_success" in st.session_state:
         st.success(st.session_state.pop("auth_success"))
 
@@ -265,7 +135,7 @@ def render_auth_ui() -> None:
 
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        tab1, tab2, tab3, tab4 = st.tabs(["Sign In", "Activate Purchase", "Create Account", "Reset Password"])
+        tab1, tab2, tab3 = st.tabs(["Sign In", "Activate Purchase", "Create Account"])
 
         # Tab 1: Sign In
         with tab1:
@@ -359,14 +229,21 @@ def render_auth_ui() -> None:
                             else:
                                 success, result = auth.signup(clean_signup_email, new_pwd, new_name)
                                 if success:
-                                    st.success("🎉 Account created successfully! Logging you in...")
+                                    st.session_state["signup_notice"] = (
+                                        "🔐 Account created successfully!\n\n"
+                                        "Please save your password somewhere safe for future login.\n\n"
+                                        "If you forget your password, it cannot be recovered."
+                                    )
 
                                     # Auto-login if session is not active (Confirm Email is disabled)
                                     if not auth.is_authenticated():
                                         login_ok, login_res = auth.login(clean_signup_email, new_pwd)
                                         if not login_ok:
-                                            st.error(f"Account created, but automatic sign-in failed: {login_res}")
-                                            st.stop()
+                                            st.session_state.pop("activated_email", None)
+                                            st.session_state.pop("activated_license", None)
+                                            st.session_state.pop("signup_email", None)
+                                            st.session_state.pop("signup_lic_key", None)
+                                            st.rerun()
 
                                     user_id = auth.get_user_id()
                                     if user_id:
@@ -383,22 +260,6 @@ def render_auth_ui() -> None:
                                     st.rerun()
                                 else:
                                     st.error(f"Signup failed: {result}")
-
-
-        # Tab 4: Reset Password
-        with tab4:
-            st.markdown("##### Forgot your password?")
-            st.caption("We'll send you a link to reset it.")
-            reset_email = st.text_input("Email address", placeholder="you@example.com", key="reset_email")
-            if st.button("Send Reset Link", use_container_width=True, key="btn_send_reset"):
-                if reset_email:
-                    success, err = auth.forgot_password(reset_email)
-                    if success:
-                        st.success("✅ Reset link sent! Check your inbox.")
-                    else:
-                        st.error(f"Failed to send reset email: {err}")
-                else:
-                    st.error("Please enter your email address.")
 
 
 
@@ -552,18 +413,10 @@ def route_page() -> None:
 def main() -> None:
     import sys
     ui_components.inject_global_css()
-    ui_components.inject_auth_hash_bridge()
     init_session()
 
     if not check_database_connection():
         st.error("🚨 System Offline — Unable to connect to database. Please check configuration.")
-        return
-
-    # Check for authentication redirect / password recovery flow
-    is_recovery = handle_auth_redirects()
-    if is_recovery:
-        print("[app] Rendering password reset screen", file=sys.stderr)
-        render_password_reset_screen()
         return
 
     if not auth.is_authenticated():
@@ -573,6 +426,9 @@ def main() -> None:
 
     print("[app] Authenticated session active — rendering dashboard", file=sys.stderr)
     auth.refresh_session()
+
+    if "signup_notice" in st.session_state:
+        st.info(st.session_state.pop("signup_notice"))
 
     # Maintenance Mode Guard
     is_maint = bool(utils.get_setting("maintenance_mode", False))

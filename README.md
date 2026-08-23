@@ -12,8 +12,6 @@ Secure account creation and login
 
 License activation
 
-Password reset
-
 Personal profile
 
 Habit creation and management
@@ -284,8 +282,6 @@ Sign up
 Login
 
 Logout
-
-Password reset
 
 Invalid credentials
 

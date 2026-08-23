@@ -606,44 +606,7 @@ def inject_global_css():
     """, unsafe_allow_html=True)
 
 
-def inject_auth_hash_bridge() -> None:
-    """Injects client-side script via Streamlit iframe component to bridge hash fragments from Supabase recovery redirect into query parameters."""
-    import streamlit.components.v1 as components
-    bridge_code = """
-    <script>
-    (function() {
-        try {
-            var hash = window.parent.location.hash;
-            if (hash && hash.length > 1) {
-                if (hash.indexOf('access_token') !== -1 ||
-                    hash.indexOf('error') !== -1 ||
-                    hash.indexOf('error_code') !== -1 ||
-                    hash.indexOf('type=recovery') !== -1 ||
-                    hash.indexOf('code=') !== -1) {
-                    
-                    var cleanHash = hash.substring(1);
-                    var parentSearch = window.parent.location.search;
-                    var searchParams = new URLSearchParams(parentSearch || '');
-                    var hashParams = new URLSearchParams(cleanHash);
-                    
-                    hashParams.forEach(function(value, key) {
-                        searchParams.set(key, value);
-                    });
-                    
-                    var newUrl = window.parent.location.pathname + '?' + searchParams.toString();
-                    window.parent.location.replace(newUrl);
-                }
-            }
-        } catch (e) {
-            // Silently handle iframe access in strict contexts
-        }
-    })();
-    </script>
-    """
-    try:
-        components.html(bridge_code, height=0, width=0)
-    except Exception:
-        pass
+
 
 
 def render_hero(title, subtitle, icon=None):
