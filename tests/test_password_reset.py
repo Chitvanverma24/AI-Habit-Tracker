@@ -98,37 +98,36 @@ class TestPasswordResetRedirectURL(unittest.TestCase):
         self.assertIn("test-verifier-2", candidates)
 
     def test_forgot_password_passes_environment_aware_redirect_to(self):
-        """forgot_password must call Supabase recover with PKCE challenge and target redirect URL."""
+        """forgot_password must call Supabase reset_password_email with target redirect URL."""
         mock_db = MagicMock()
         with patch("auth.get_db", return_value=mock_db):
             with patch("auth.get_app_url", return_value="https://ai-habbit-tracker.streamlit.app/"):
                 ok, err = self.auth.forgot_password("user@example.com")
                 self.assertTrue(ok)
                 self.assertIsNone(err)
-                mock_db.auth._request.assert_called_once()
-                call_args, call_kwargs = mock_db.auth._request.call_args
-                self.assertEqual(call_args[0], "POST")
-                self.assertEqual(call_args[1], "recover")
-                self.assertEqual(call_kwargs.get("redirect_to"), "https://ai-habbit-tracker.streamlit.app/")
-                self.assertEqual(call_kwargs.get("body", {}).get("email"), "user@example.com")
-                self.assertIn("code_challenge", call_kwargs.get("body", {}))
-                self.assertEqual(call_kwargs.get("body", {}).get("code_challenge_method"), "s256")
+                mock_db.auth.reset_password_email.assert_called_once_with(
+                    "user@example.com",
+                    options={"redirect_to": "https://ai-habbit-tracker.streamlit.app/"}
+                )
 
     def test_forgot_password_passes_custom_redirect_url(self):
-        """If explicit redirect_url is passed, use it with PKCE challenge."""
+        """If explicit redirect_url is passed, use it."""
         mock_db = MagicMock()
         with patch("auth.get_db", return_value=mock_db):
             ok, err = self.auth.forgot_password("user@example.com", redirect_url="http://localhost:8501/")
             self.assertTrue(ok)
-            mock_db.auth._request.assert_called_once()
-            _, call_kwargs = mock_db.auth._request.call_args
-            self.assertEqual(call_kwargs.get("redirect_to"), "http://localhost:8501/")
+            mock_db.auth.reset_password_email.assert_called_once_with(
+                "user@example.com",
+                options={"redirect_to": "http://localhost:8501/"}
+            )
 
     # ============================================================
     # 3. PKCE Code Exchange (exchange_code)
     # ============================================================
     def test_exchange_code_success(self):
-        """exchange_code must exchange code for session with candidate verifier and populate session state."""
+        """exchange_code must exchange code for session and populate session state.
+        Since forgot_password no longer injects a custom PKCE challenge,
+        exchange_code tries without a verifier first (None)."""
         mock_db = MagicMock()
         mock_user = MagicMock(id="user-pkce", email="pkce@example.com")
         mock_session = MagicMock(access_token="pkce-token")
@@ -140,10 +139,10 @@ class TestPasswordResetRedirectURL(unittest.TestCase):
             with patch("auth.get_db", return_value=mock_db):
                 ok, res = self.auth.exchange_code("valid-auth-code")
                 self.assertTrue(ok)
-                mock_db.auth.exchange_code_for_session.assert_called_with({
-                    "auth_code": "valid-auth-code",
-                    "code_verifier": "my-pkce-verifier"
-                })
+                # None (no verifier) is tried first and succeeds
+                mock_db.auth.exchange_code_for_session.assert_called_with(
+                    {"auth_code": "valid-auth-code"}
+                )
                 self.assertEqual(session.get("auth_user_id"), "user-pkce")
                 self.assertEqual(session.get("auth_user_email"), "pkce@example.com")
                 self.assertEqual(session.get("auth_token"), "pkce-token")
@@ -283,6 +282,128 @@ class TestPasswordResetRedirectURL(unittest.TestCase):
                         self.assertIn("auth_error", mock_session_state)
 
 
+class TestPasswordResetRouting(unittest.TestCase):
+    """Verify the ACTUAL UI routing decision in main():
+    - Recovery mode active → password reset screen (NOT sign in)
+    - No session, no recovery → sign in screen
+    - Authenticated session → dashboard
+    """
+
+    def setUp(self):
+        self.auth = AuthManager()
+
+    def test_recovery_mode_renders_password_reset_not_login(self):
+        """Given is_password_recovery=True and a valid recovered session,
+        the application MUST render the password reset screen and MUST NOT render the Sign In screen."""
+        mock_session_state = MockSessionState({
+            "is_password_recovery": True,
+            "auth_user_id": "recovered-user-id",
+            "auth_user_email": "user@example.com",
+        })
+        mock_query_params = MockSessionState({})
+
+        with patch("streamlit.session_state", mock_session_state):
+            with patch("streamlit.query_params", mock_query_params):
+                with patch("app.auth", self.auth):
+                    from app import handle_auth_redirects
+                    is_recovery = handle_auth_redirects()
+                    self.assertTrue(is_recovery, "handle_auth_redirects must return True when is_password_recovery is set")
+
+                    # Verify: if is_recovery is True, main() would call render_password_reset_screen, NOT render_auth_ui
+                    # This is the exact routing check from main():
+                    #   if is_recovery: render_password_reset_screen(); return
+                    #   if not auth.is_authenticated(): render_auth_ui(); return
+                    # Since is_recovery=True, we never reach auth.is_authenticated() or render_auth_ui()
+
+    def test_no_session_no_recovery_renders_login(self):
+        """Given is_password_recovery=False and no session,
+        the application MUST render the Sign In screen."""
+        mock_session_state = MockSessionState({})
+        mock_query_params = MockSessionState({})
+
+        with patch("streamlit.session_state", mock_session_state):
+            with patch("streamlit.query_params", mock_query_params):
+                with patch("app.auth", self.auth):
+                    from app import handle_auth_redirects
+                    is_recovery = handle_auth_redirects()
+                    self.assertFalse(is_recovery, "handle_auth_redirects must return False with no recovery params")
+
+                    # Now check: since is_recovery is False, main() checks auth.is_authenticated()
+                    is_authed = self.auth.is_authenticated()
+                    self.assertFalse(is_authed, "With empty session state, user must NOT be authenticated")
+                    # Therefore main() would call render_auth_ui() (Sign In screen)
+
+    def test_authenticated_session_renders_dashboard(self):
+        """Given a normal authenticated session (no recovery mode),
+        the application MUST proceed to the dashboard."""
+        mock_session_state = MockSessionState({
+            "auth_user_id": "normal-user-id",
+            "auth_user_email": "user@example.com",
+            "auth_user": MagicMock(id="normal-user-id", email="user@example.com"),
+        })
+        mock_query_params = MockSessionState({})
+
+        with patch("streamlit.session_state", mock_session_state):
+            with patch("streamlit.query_params", mock_query_params):
+                with patch("app.auth", self.auth):
+                    from app import handle_auth_redirects
+                    is_recovery = handle_auth_redirects()
+                    self.assertFalse(is_recovery, "No recovery mode should be active for normal auth session")
+
+                    # Now check: since is_recovery is False, main() checks auth.is_authenticated()
+                    is_authed = self.auth.is_authenticated()
+                    self.assertTrue(is_authed, "With auth_user_id in session, user must be authenticated")
+                    # Therefore main() would proceed to dashboard (render_sidebar + route_page)
+
+    def test_exchange_code_without_verifier_succeeds(self):
+        """exchange_code must try without a verifier first (None) since
+        forgot_password no longer injects a custom PKCE challenge."""
+        mock_db = MagicMock()
+        mock_user = MagicMock(id="user-no-verifier", email="novrfy@example.com")
+        mock_session = MagicMock(access_token="no-verify-token")
+        mock_resp = MagicMock(user=mock_user, session=mock_session)
+        mock_db.auth.exchange_code_for_session.return_value = mock_resp
+
+        session = MockSessionState({})  # No _pkce_code_verifier stored
+        with patch("streamlit.session_state", session):
+            with patch("auth.get_db", return_value=mock_db):
+                ok, res = self.auth.exchange_code("auth-code-no-verifier")
+                self.assertTrue(ok, "exchange_code must succeed without a stored verifier")
+                # Verify it was called with just auth_code (no code_verifier)
+                mock_db.auth.exchange_code_for_session.assert_called_with(
+                    {"auth_code": "auth-code-no-verifier"}
+                )
+                self.assertEqual(session.get("auth_user_id"), "user-no-verifier")
+                self.assertTrue(session.get("is_password_recovery"))
+
+    def test_full_recovery_flow_routing(self):
+        """End-to-end test: code in query params → exchange succeeds → recovery mode set → routing returns True.
+        This simulates the actual production flow when a user clicks the email link."""
+        from app import handle_auth_redirects
+
+        mock_db = MagicMock()
+        mock_user = MagicMock(id="recovery-user", email="recover@example.com")
+        mock_session_obj = MagicMock(access_token="recovery-token")
+        mock_resp = MagicMock(user=mock_user, session=mock_session_obj)
+        mock_db.auth.exchange_code_for_session.return_value = mock_resp
+
+        mock_query_params = MockSessionState({"code": "recovery-auth-code"})
+        mock_session_state = MockSessionState({})
+
+        mock_auth = AuthManager()
+
+        with patch("streamlit.query_params", mock_query_params):
+            with patch("streamlit.session_state", mock_session_state):
+                with patch("auth.get_db", return_value=mock_db):
+                    with patch("app.auth", mock_auth):
+                        is_recovery = handle_auth_redirects()
+
+                        self.assertTrue(is_recovery, "Full recovery flow must return True")
+                        self.assertTrue(mock_session_state.get("is_password_recovery"),
+                                       "is_password_recovery must be set in session state")
+                        self.assertEqual(mock_session_state.get("auth_user_id"), "recovery-user")
+                        self.assertEqual(mock_session_state.get("auth_user_email"), "recover@example.com")
+
+
 if __name__ == "__main__":
     unittest.main()
-

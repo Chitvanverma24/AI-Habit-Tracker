@@ -240,71 +240,65 @@ class AuthManager:
         return True
 
     def forgot_password(self, email: str, redirect_url: Optional[str] = None):
-        """Send password reset email using Supabase PKCE flow with environment-aware redirect URL. Returns (success: bool, error_msg?)."""
+        """Send password reset email using Supabase's built-in flow with environment-aware redirect URL.
+
+        Uses standard reset_password_email() which lets Supabase manage the
+        recovery flow.  The previous custom PKCE approach stored the
+        code_verifier in session_state / module-level dict, which is
+        unavailable when the user opens the email link in a new browser
+        tab (new Streamlit session / potentially different worker process).
+
+        Returns (success: bool, error_msg?).
+        """
         try:
             target_url = redirect_url or get_app_url()
             if target_url and not target_url.endswith("/"):
                 target_url = f"{target_url}/"
 
-            # 1. Generate and store PKCE verifier & challenge
-            verifier, challenge = _generate_pkce_pair()
-            _store_pkce_verifier(verifier)
-
-            if hasattr(st, "session_state"):
-                st.session_state["_pkce_code_verifier"] = verifier
-
-            try:
-                self.db.auth._storage.set_item(
-                    f"{self.db.auth._storage_key}-code-verifier", verifier
-                )
-            except Exception:
-                pass
-
             clean_email = email.strip().lower()
 
-            # 2. Call Supabase Auth /recover with PKCE code_challenge & code_challenge_method
-            try:
-                self.db.auth._request(
-                    "POST",
-                    "recover",
-                    body={
-                        "email": clean_email,
-                        "code_challenge": challenge,
-                        "code_challenge_method": "s256",
-                    },
-                    query={"code_challenge": challenge, "code_challenge_method": "s256"},
-                    redirect_to=target_url,
-                )
-            except Exception:
-                # Fallback to standard client method if custom _request format raises
-                options = {"redirect_to": target_url} if target_url else {}
-                self.db.auth.reset_password_email(clean_email, options=options)
+            # Use Supabase's standard password reset method.
+            # This sends a recovery email whose link redirects back to
+            # target_url with either ?code=... (PKCE managed by Supabase)
+            # or #access_token=...&type=recovery (implicit flow).
+            options = {"redirect_to": target_url} if target_url else {}
+            self.db.auth.reset_password_email(clean_email, options=options)
 
             return True, None
         except Exception as e:
             return False, self._format_auth_error(e)
 
     def exchange_code(self, auth_code: str):
-        """Exchange PKCE authorization code (?code=...) for an authenticated session."""
+        """Exchange authorization code (?code=...) for an authenticated session.
+
+        Tries the exchange without a code_verifier first (standard flow
+        when no client-side PKCE challenge was sent), then falls back to
+        any available candidate verifiers for backward compatibility.
+        """
         try:
+            import sys
             clean_code = auth_code.strip()
             client = self.db
 
-            # Build list of candidate verifiers
-            candidates = []
+            # Build ordered list of candidate verifiers to try.
+            # None first (no verifier) since forgot_password no longer
+            # injects a custom PKCE challenge.
+            candidates = [None]
+
+            # Add any session-stored verifier
             if hasattr(st, "session_state") and "_pkce_code_verifier" in st.session_state:
                 candidates.append(st.session_state["_pkce_code_verifier"])
+            # Add any client-storage verifier
             try:
                 stored = client.auth._storage.get_item(f"{client.auth._storage_key}-code-verifier")
                 if stored and stored not in candidates:
                     candidates.append(stored)
             except Exception:
                 pass
+            # Add any process-level verifiers
             for v in _get_candidate_pkce_verifiers():
                 if v not in candidates:
                     candidates.append(v)
-            if not candidates:
-                candidates.append(None)
 
             last_err = None
             response = None
@@ -315,9 +309,11 @@ class AuthManager:
                         params["code_verifier"] = verifier
                     response = client.auth.exchange_code_for_session(params)
                     if response and hasattr(response, "user") and response.user:
+                        print("[auth] Recovery code exchange succeeded", file=sys.stderr)
                         break
                 except Exception as e:
                     last_err = e
+                    response = None
 
             if response and hasattr(response, "user") and response.user:
                 user = response.user
@@ -337,8 +333,11 @@ class AuthManager:
                     st.session_state["is_password_recovery"] = True
                 return True, response
             else:
+                print(f"[auth] Recovery code exchange failed: {last_err}", file=sys.stderr)
                 return False, self._format_auth_error(last_err or Exception("Failed to exchange authorization code."))
         except Exception as e:
+            import sys
+            print(f"[auth] Recovery code exchange exception: {e}", file=sys.stderr)
             return False, self._format_auth_error(e)
 
     def verify_recovery_token(self, token_hash: str):

@@ -101,8 +101,11 @@ def handle_auth_redirects() -> bool:
     Sets up session state if valid, or captures error messages.
     Returns True if the app is currently in password recovery mode.
     """
+    import sys
+
     # 1. If already flagged in recovery mode in session state
     if st.session_state.get("is_password_recovery"):
+        print("[app] Password recovery mode already active in session state", file=sys.stderr)
         return True
 
     # 2. Check for error in query params (e.g. otp_expired, access_denied)
@@ -115,6 +118,7 @@ def handle_auth_redirects() -> bool:
             st.session_state["auth_error"] = "The password reset link has expired or has already been used. Please request a new reset link below."
         else:
             st.session_state["auth_error"] = f"Password reset error: {err_desc}"
+        print(f"[app] Auth redirect error detected: {err}", file=sys.stderr)
         return False
 
     # Extract all auth query params before any query param modification
@@ -126,21 +130,26 @@ def handle_auth_redirects() -> bool:
 
     # 3. Check for PKCE authorization code (?code=...)
     if code:
+        print("[app] Recovery callback detected: ?code=... parameter present", file=sys.stderr)
         st.query_params.clear()
         ok, res = auth.exchange_code(code)
         if ok:
             st.session_state["is_password_recovery"] = True
+            print("[app] Recovery session established — will render password reset screen", file=sys.stderr)
             return True
         else:
             st.session_state["auth_error"] = f"Failed to verify reset link: {res}. Please request a new link."
+            print(f"[app] Recovery code exchange failed — falling through to login", file=sys.stderr)
             return False
 
     # 4. Check for OTP / token_hash (?token_hash=... or ?token=...)
     if token_hash:
+        print("[app] Recovery callback detected: token_hash parameter present", file=sys.stderr)
         st.query_params.clear()
         ok, res = auth.verify_recovery_token(token_hash)
         if ok:
             st.session_state["is_password_recovery"] = True
+            print("[app] Recovery session established via token_hash", file=sys.stderr)
             return True
         else:
             st.session_state["auth_error"] = f"Failed to verify recovery token: {res}. Please request a new link."
@@ -148,10 +157,12 @@ def handle_auth_redirects() -> bool:
 
     # 5. Check for direct access_token (?access_token=...)
     if access_token:
+        print("[app] Recovery callback detected: access_token parameter present", file=sys.stderr)
         st.query_params.clear()
         ok, res = auth.set_auth_session(access_token, refresh_token)
         if ok:
             st.session_state["is_password_recovery"] = True
+            print("[app] Recovery session established via access_token", file=sys.stderr)
             return True
         else:
             st.session_state["auth_error"] = f"Failed to establish session: {res}. Please request a new link."
@@ -539,6 +550,7 @@ def route_page() -> None:
 # Main Application Loop
 
 def main() -> None:
+    import sys
     ui_components.inject_global_css()
     ui_components.inject_auth_hash_bridge()
     init_session()
@@ -550,13 +562,16 @@ def main() -> None:
     # Check for authentication redirect / password recovery flow
     is_recovery = handle_auth_redirects()
     if is_recovery:
+        print("[app] Rendering password reset screen", file=sys.stderr)
         render_password_reset_screen()
         return
 
     if not auth.is_authenticated():
+        print("[app] No active session — rendering login screen", file=sys.stderr)
         render_auth_ui()
         return
 
+    print("[app] Authenticated session active — rendering dashboard", file=sys.stderr)
     auth.refresh_session()
 
     # Maintenance Mode Guard
