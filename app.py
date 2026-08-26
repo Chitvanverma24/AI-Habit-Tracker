@@ -92,7 +92,70 @@ def render_license_gate() -> None:
     activate_license.main()
 
 
+# Production base URL (must match Supabase Site URL / Redirect URLs)
+PRODUCTION_URL = "https://ai-habbit-tracker.streamlit.app"
 
+
+def render_password_reset_screen() -> None:
+    """Renders a secure 'Set New Password' form after the user clicks the Supabase
+    recovery link. The user is already authenticated via the recovery session."""
+    sys_name = utils.get_setting("system_name", "AI Habit Tracker")
+    sys_logo = utils.get_setting("system_logo", "🎯")
+
+    ui_components.inject_global_css()
+
+    st.markdown(f"""
+    <div style="text-align: center; padding: 2rem 0 1rem 0;">
+        <div style="display: inline-flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem;">
+            <div style="width: 46px; height: 46px; background: linear-gradient(135deg, #2563eb, #1d4ed8);
+                        border-radius: 12px; display: flex; align-items: center; justify-content: center;
+                        font-size: 1.4rem; color: white; font-weight: 800; box-shadow: 0 4px 14px rgba(37, 99, 235, 0.4);">{sys_logo}</div>
+            <span style="font-size: 1.6rem; font-weight: 800; color: #0f172a; letter-spacing: -0.03em;">
+                {sys_name}
+            </span>
+        </div>
+        <p style="color: #475569; font-size: 0.95rem; margin-top: 0.25rem;">
+            Set your new password below
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        with st.form("reset_password_form"):
+            st.markdown("##### Reset Your Password")
+            new_pwd = st.text_input("New Password", type="password", key="reset_new_pwd",
+                                    help="Must be at least 6 characters with at least one letter and one number")
+            confirm_pwd = st.text_input("Confirm New Password", type="password", key="reset_confirm_pwd")
+            st.write("")
+            if st.form_submit_button("Set New Password", type="primary", use_container_width=True):
+                # Validate inputs
+                if not new_pwd or not confirm_pwd:
+                    st.error("Please fill in both password fields.")
+                elif new_pwd != confirm_pwd:
+                    st.error("Passwords do not match. Please try again.")
+                elif len(new_pwd) < 6:
+                    st.error("Password must be at least 6 characters long.")
+                elif not any(c.isalpha() for c in new_pwd):
+                    st.error("Password must contain at least one letter.")
+                elif not any(c.isdigit() for c in new_pwd):
+                    st.error("Password must contain at least one number.")
+                else:
+                    ok, err = auth.update_password(new_pwd)
+                    if ok:
+                        # Clear the recovery flag
+                        st.session_state.pop("is_password_recovery", None)
+                        st.session_state["auth_success"] = "✅ Password reset successfully! You can now sign in with your new password."
+                        auth.logout()
+                        st.rerun()
+                    else:
+                        st.error(f"Failed to update password: {err}")
+
+        st.write("")
+        if st.button("← Back to Login", key="reset_back_to_login", use_container_width=True):
+            st.session_state.pop("is_password_recovery", None)
+            auth.logout()
+            st.rerun()
 
 
 
@@ -139,20 +202,49 @@ def render_auth_ui() -> None:
 
         # Tab 1: Sign In
         with tab1:
-            with st.form("login_form"):
-                st.markdown("##### Welcome back")
-                email = st.text_input("Email", placeholder="you@example.com", key="login_email")
-                pwd = st.text_input("Password", type="password", key="login_pwd")
-                st.write("")
-                if st.form_submit_button("Sign In", type="primary", use_container_width=True):
-                    if not email or not pwd:
-                        st.error("Please fill in all fields.")
-                    else:
-                        success, result = auth.login(email, pwd)
-                        if success:
-                            st.rerun()
+            # Check if we're in "forgot password" mode (per-session flag)
+            if st.session_state.get("_show_forgot_password"):
+                st.markdown("##### Reset your password")
+                st.caption("Enter your email address and we'll send you a reset link.")
+                with st.form("forgot_password_form"):
+                    reset_email = st.text_input("Email Address", placeholder="you@example.com",
+                                                key="forgot_pwd_email")
+                    st.write("")
+                    if st.form_submit_button("Send Reset Link", type="primary", use_container_width=True):
+                        if not reset_email or not reset_email.strip():
+                            st.error("Please enter your email address.")
+                        elif "@" not in reset_email or "." not in reset_email:
+                            st.error("Please enter a valid email address.")
                         else:
-                            st.error(f"Login failed: {result}")
+                            ok, err = auth.forgot_password(reset_email, PRODUCTION_URL)
+                            if ok:
+                                st.success(
+                                    "📧 If an account exists with this email, a password reset link "
+                                    "has been sent. Please check your inbox (and spam folder)."
+                                )
+                            else:
+                                st.error(f"Failed to send reset email: {err}")
+                if st.button("← Back to Sign In", key="back_to_signin", use_container_width=True):
+                    st.session_state.pop("_show_forgot_password", None)
+                    st.rerun()
+            else:
+                with st.form("login_form"):
+                    st.markdown("##### Welcome back")
+                    email = st.text_input("Email", placeholder="you@example.com", key="login_email")
+                    pwd = st.text_input("Password", type="password", key="login_pwd")
+                    st.write("")
+                    if st.form_submit_button("Sign In", type="primary", use_container_width=True):
+                        if not email or not pwd:
+                            st.error("Please fill in all fields.")
+                        else:
+                            success, result = auth.login(email, pwd)
+                            if success:
+                                st.rerun()
+                            else:
+                                st.error(f"Login failed: {result}")
+                if st.button("🔑 Forgot Password?", key="show_forgot_password", use_container_width=True):
+                    st.session_state["_show_forgot_password"] = True
+                    st.rerun()
 
         # Tab 2: Activate Purchase
         with tab2:
@@ -232,7 +324,7 @@ def render_auth_ui() -> None:
                                     st.session_state["signup_notice"] = (
                                         "🔐 Account created successfully!\n\n"
                                         "Please save your password somewhere safe for future login.\n\n"
-                                        "If you forget your password, it cannot be recovered."
+                                        "If you forget your password, use the 'Forgot Password' option on the Sign In page."
                                     )
 
                                     # Auto-login if session is not active (Confirm Email is disabled)
@@ -417,6 +509,40 @@ def main() -> None:
 
     if not check_database_connection():
         st.error("🚨 System Offline — Unable to connect to database. Please check configuration.")
+        return
+
+    # --- Password Recovery Redirect Detection ---
+    # Supabase PKCE flow: after the user clicks the reset link in their email,
+    # Supabase redirects to our app with a `code` query parameter.
+    # We exchange it for an authenticated session and show the reset form.
+    try:
+        params = st.query_params
+        code = params.get("code")
+        if code and not st.session_state.get("_recovery_code_handled"):
+            # Mark as handled to avoid re-processing on rerun
+            st.session_state["_recovery_code_handled"] = True
+            ok, result = auth.set_session_from_recovery_code(code)
+            if ok:
+                st.session_state["is_password_recovery"] = True
+                # Clear query params to prevent re-processing on refresh
+                st.query_params.clear()
+                st.rerun()
+            else:
+                st.session_state.pop("_recovery_code_handled", None)
+                st.query_params.clear()
+                st.session_state["auth_error"] = (
+                    "Password reset link is invalid or has expired. "
+                    "Please request a new reset link."
+                )
+                st.rerun()
+    except Exception:
+        pass
+
+    # --- Password Recovery Mode ---
+    # If the user arrived via a recovery link and is authenticated,
+    # show the password reset screen instead of the normal dashboard.
+    if st.session_state.get("is_password_recovery") and auth.is_authenticated():
+        render_password_reset_screen()
         return
 
     if not auth.is_authenticated():

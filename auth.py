@@ -164,6 +164,43 @@ class AuthManager:
         except Exception as e:
             return False, self._format_auth_error(e)
 
+    def forgot_password(self, email: str, redirect_url: str):
+        """Send a password reset email via Supabase Auth + configured SMTP.
+        The redirect_url must be allowed in Supabase Dashboard → Redirect URLs."""
+        try:
+            self.db.auth.reset_password_for_email(
+                email.strip().lower(),
+                {"redirect_to": redirect_url}
+            )
+            return True, None
+        except Exception as e:
+            return False, self._format_auth_error(e)
+
+    def set_session_from_recovery_code(self, code: str):
+        """Exchange a PKCE auth code (from Supabase recovery redirect) for an
+        authenticated session. Binds the session to current st.session_state."""
+        try:
+            client = self.db
+            response = client.auth.exchange_code_for_session({"auth_code": code})
+            if response and hasattr(response, "user") and response.user:
+                user = response.user
+                session = getattr(response, "session", None)
+                if hasattr(st, "session_state"):
+                    st.session_state["auth_user"] = user
+                    st.session_state["auth_session"] = session
+                    st.session_state["auth_user_id"] = user.id
+                    st.session_state["auth_user_email"] = user.email
+                    if session and hasattr(session, "access_token"):
+                        st.session_state["auth_token"] = session.access_token
+                        try:
+                            client.postgrest.auth(session.access_token)
+                        except Exception:
+                            pass
+                    st.session_state["_supabase_client"] = client
+            return True, response
+        except Exception as e:
+            return False, self._format_auth_error(e)
+
     def resend_verification_email(self, email: str):
         """Resend verification email."""
         try:
