@@ -359,7 +359,6 @@ def render_weekly_activity_heatmap(logs: pd.DataFrame) -> None:
 
     df["dt"] = pd.to_datetime(df["log_date"])
     df["day_name"] = df["dt"].dt.day_name()
-    df["hour"] = df["dt"].dt.hour
 
     days_order = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
     day_counts = df["day_name"].value_counts().reindex(days_order, fill_value=0).reset_index()

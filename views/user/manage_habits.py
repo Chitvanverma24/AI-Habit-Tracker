@@ -23,6 +23,11 @@ import ui_components
 
 def init_session_state() -> None:
     """Initializes session state variables required for the dashboard."""
+    current_uid = auth.get_user_id()
+    if st.session_state.get("_manage_habits_uid") != current_uid:
+        st.session_state._manage_habits_uid = current_uid
+        st.session_state.bulk_selected = set()
+        st.session_state.habits_page_num = 1
     if "view_mode" not in st.session_state:
         st.session_state.view_mode = "Cards"
     if "bulk_selected" not in st.session_state:
@@ -220,23 +225,28 @@ def perform_bulk_action(action: str, habit_ids: Set[str]) -> None:
     if not habit_ids:
         st.warning("No habits selected.")
         return
-        
+
+    user_id = auth.get_user_id()
+    if not user_id:
+        st.error("Authentication required.")
+        return
+
     db = get_db()
     ids_list = list(habit_ids)
     now_str = utils.now().isoformat()
-    
+
     try:
         if action == "delete":
-            db.table("habit_logs").delete().in_("habit_id", ids_list).execute()
-            db.table("habits").delete().in_("id", ids_list).execute()
+            db.table("habit_logs").delete().in_("habit_id", ids_list).eq("user_id", user_id).execute()
+            db.table("habits").delete().in_("id", ids_list).eq("user_id", user_id).execute()
             st.success(f"Successfully deleted {len(habit_ids)} habits.")
         elif action == "activate":
-            db.table("habits").update({"is_active": True, "updated_at": now_str}).in_("id", ids_list).execute()
+            db.table("habits").update({"is_active": True, "updated_at": now_str}).in_("id", ids_list).eq("user_id", user_id).execute()
             st.success(f"Successfully activated {len(habit_ids)} habits.")
         elif action == "deactivate":
-            db.table("habits").update({"is_active": False, "updated_at": now_str}).in_("id", ids_list).execute()
+            db.table("habits").update({"is_active": False, "updated_at": now_str}).in_("id", ids_list).eq("user_id", user_id).execute()
             st.success(f"Successfully deactivated {len(habit_ids)} habits.")
-            
+
         refresh_data()
     except Exception as e:
         st.error(f"Failed to perform bulk action: {e}")
@@ -269,7 +279,7 @@ def create_habit_db(title: str, description: str, frequency: str, target_count: 
 def update_habit_db(habit_id: str, title: str, description: str, frequency: str, target_count: int) -> None:
     db = get_db()
     user_id = auth.get_user_id()
-    now_str = datetime.now().isoformat()
+    now_str = utils.now().isoformat()
     try:
         db.table("habits").update({
             "title": title.strip(),

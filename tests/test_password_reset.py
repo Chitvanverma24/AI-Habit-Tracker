@@ -48,6 +48,13 @@ class TestPasswordResetFeature(unittest.TestCase):
         """forgot_password must exist on AuthManager."""
         self.assertTrue(hasattr(self.auth, "forgot_password"))
 
+    def test_forgot_password_temporarily_disabled(self):
+        """forgot_password returns disabled response when feature is paused."""
+        ok, msg = self.auth.forgot_password("user@example.com", "https://example.com")
+        self.assertFalse(ok)
+        self.assertIn("temporarily disabled", msg.lower())
+
+    @unittest.skip("TEMPORARILY DISABLED — restore when domain/email configured")
     def test_forgot_password_calls_supabase_reset(self):
         """forgot_password must call Supabase reset_password_for_email with correct args."""
         mock_db = MagicMock()
@@ -62,6 +69,7 @@ class TestPasswordResetFeature(unittest.TestCase):
                 {"redirect_to": redirect_url}
             )
 
+    @unittest.skip("TEMPORARILY DISABLED — restore when domain/email configured")
     def test_forgot_password_normalizes_email(self):
         """forgot_password must strip and lowercase the email."""
         mock_db = MagicMock()
@@ -74,6 +82,7 @@ class TestPasswordResetFeature(unittest.TestCase):
                 {"redirect_to": redirect_url}
             )
 
+    @unittest.skip("TEMPORARILY DISABLED — restore when domain/email configured")
     def test_forgot_password_handles_rate_limit(self):
         """forgot_password must return user-friendly error on rate limit."""
         mock_db = MagicMock()
@@ -84,6 +93,7 @@ class TestPasswordResetFeature(unittest.TestCase):
             self.assertFalse(ok)
             self.assertIn("rate limit", err.lower())
 
+    @unittest.skip("TEMPORARILY DISABLED — restore when domain/email configured")
     def test_forgot_password_handles_invalid_email(self):
         """forgot_password must return user-friendly error for invalid email."""
         mock_db = MagicMock()
@@ -101,6 +111,13 @@ class TestPasswordResetFeature(unittest.TestCase):
         """set_session_from_recovery_code must exist on AuthManager."""
         self.assertTrue(hasattr(self.auth, "set_session_from_recovery_code"))
 
+    def test_set_session_from_recovery_code_temporarily_disabled(self):
+        """set_session_from_recovery_code returns disabled response when feature is paused."""
+        ok, msg = self.auth.set_session_from_recovery_code("any-code")
+        self.assertFalse(ok)
+        self.assertIn("temporarily disabled", msg.lower())
+
+    @unittest.skip("TEMPORARILY DISABLED — restore when domain/email configured")
     def test_set_session_from_recovery_code_success(self):
         """set_session_from_recovery_code must exchange code and populate session state."""
         mock_db = MagicMock()
@@ -121,6 +138,7 @@ class TestPasswordResetFeature(unittest.TestCase):
                     {"auth_code": "test-code-123"}
                 )
 
+    @unittest.skip("TEMPORARILY DISABLED — restore when domain/email configured")
     def test_set_session_from_recovery_code_invalid_code(self):
         """set_session_from_recovery_code must return error for invalid/expired code."""
         mock_db = MagicMock()

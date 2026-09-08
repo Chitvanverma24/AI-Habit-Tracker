@@ -14,7 +14,7 @@ from datetime import datetime
 from typing import Optional, List, Dict, Any, Tuple
 
 import streamlit as st
-from database import get_db
+from database import get_db, get_admin_db
 from auth import auth
 
 
@@ -97,8 +97,11 @@ def activate_purchase_key(license_key: str, email: str, user_id: Optional[str] =
 
     # 2. Python Fallback Query against `licenses` table
     try:
+        admin_db = get_admin_db()
+        data_db = admin_db if admin_db else db
+
         # Fetch license record
-        resp = db.table("licenses").select("*").ilike("license_key", clean_key).execute()
+        resp = data_db.table("licenses").select("*").ilike("license_key", clean_key).execute()
         records = resp.data or []
 
         if not records:
@@ -116,7 +119,7 @@ def activate_purchase_key(license_key: str, email: str, user_id: Optional[str] =
                 # Same email reactivating/linking account
                 if current_uid and not lic.get("assigned_user_id"):
                     try:
-                        db.table("licenses").update({
+                        data_db.table("licenses").update({
                             "assigned_user_id": current_uid,
                             "activated_by": current_uid
                         }).eq("id", lic["id"]).execute()
@@ -137,7 +140,7 @@ def activate_purchase_key(license_key: str, email: str, user_id: Optional[str] =
             update_payload["assigned_user_id"] = current_uid
             update_payload["activated_by"] = current_uid
 
-        db.table("licenses").update(update_payload).eq("id", lic["id"]).execute()
+        data_db.table("licenses").update(update_payload).eq("id", lic["id"]).execute()
         st.cache_data.clear()
         return True, "Purchase activated successfully."
 
@@ -194,8 +197,10 @@ def check_email_has_active_license(email: str, license_key: Optional[str] = None
 
     # 4. Direct table select fallback (works when authenticated or if RLS permits)
     try:
+        admin_db = get_admin_db()
+        data_db = admin_db if admin_db else db
         response = (
-            db.table("licenses")
+            data_db.table("licenses")
             .select("*")
             .ilike("assigned_email", clean_email)
             .eq("status", "active")

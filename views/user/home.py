@@ -17,6 +17,9 @@ def complete_habit(habit_id: str) -> None:
     uid = utils.get_current_user_id()
     if not uid:
         return
+    # Guard against duplicate completions for the same date
+    if habit_id in get_completed_ids(uid):
+        return
     try:
         db.table("habit_logs").insert({
             "habit_id": habit_id,
@@ -29,8 +32,8 @@ def complete_habit(habit_id: str) -> None:
         get_completed_ids.clear()
         utils.clear_user_caches()
         st.rerun()
-    except Exception:
-        st.error("Failed to log habit completion.")
+    except Exception as e:
+        st.session_state["home_error"] = f"Failed to log habit completion: {e}"
         get_completed_ids.clear()
         utils.clear_user_caches()
         st.rerun()
@@ -50,8 +53,8 @@ def undo_completion(habit_id: str) -> None:
         get_completed_ids.clear()
         utils.clear_user_caches()
         st.rerun()
-    except Exception:
-        st.error("Failed to undo habit completion.")
+    except Exception as e:
+        st.session_state["home_error"] = f"Failed to undo habit completion: {e}"
         get_completed_ids.clear()
         utils.clear_user_caches()
         st.rerun()
@@ -80,6 +83,9 @@ def main():
     welcome = utils.greeting()
 
     ui_components.render_hero(f"{welcome}, {user_name}! 👋", "Consistency is the key to building lasting habits. Let's make today count.", icon="🏠")
+
+    if "home_error" in st.session_state:
+        st.error(st.session_state.pop("home_error"))
 
     col1, col2, col3, col4 = st.columns(4)
     with col1:

@@ -93,6 +93,7 @@ def render_licenses_table() -> None:
     if page > total_pages:
         st.session_state.license_page = total_pages
         page = total_pages
+        licenses, total = get_licenses_paginated(page, per_page, status_filter, search)
 
     st.caption(f"Showing page {page} of {total_pages} ({total:,} total records)")
 
