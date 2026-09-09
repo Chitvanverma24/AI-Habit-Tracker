@@ -135,71 +135,26 @@ class AuthManager:
         return None
 
     def render_set_cookie_script(self, token_str: str) -> None:
-        """Render client-side script to store persistent auth cookie and local storage."""
+        """Render client-side persistent storage update."""
         if not token_str:
             return
         try:
-            st.html(f"""
-            <script>
-            (function() {{
-                try {{
-                    var val = "{token_str}";
-                    var isHttps = window.location.protocol === "https:";
-                    var secureFlag = isHttps ? "; Secure" : "";
-                    document.cookie = "{AUTH_COOKIE_NAME}=" + encodeURIComponent(val) + "; path=/; max-age={COOKIE_MAX_AGE}; SameSite=Lax" + secureFlag;
-                    try {{ localStorage.setItem("{AUTH_COOKIE_NAME}", val); }} catch(e) {{}}
-                }} catch(err) {{}}
-            }})();
-            </script>
-            """, unsafe_allow_javascript=True)
+            from components.auth_storage import sync_auth_storage
+            sync_auth_storage(action="save", token=token_str, key="_auth_set_storage")
         except Exception:
             pass
 
     def render_clear_cookie_script(self) -> None:
-        """Render client-side script to delete persistent auth cookies and local storage."""
+        """Render client-side persistent storage clear."""
         try:
-            st.html(f"""
-            <script>
-            (function() {{
-                try {{
-                    var isHttps = window.location.protocol === "https:";
-                    var secureFlag = isHttps ? "; Secure" : "";
-                    document.cookie = "{AUTH_COOKIE_NAME}=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax" + secureFlag;
-                    try {{ localStorage.removeItem("{AUTH_COOKIE_NAME}"); }} catch(e) {{}}
-                    try {{ sessionStorage.removeItem("__sync_reloaded"); }} catch(e) {{}}
-                }} catch(err) {{}}
-            }})();
-            </script>
-            """, unsafe_allow_javascript=True)
+            from components.auth_storage import sync_auth_storage
+            sync_auth_storage(action="clear", key="_auth_clear_storage")
         except Exception:
             pass
 
     def render_storage_fallback_script(self) -> None:
-        """Render client-side fallback script for clients whose cookies were missing from initial HTTP request."""
-        try:
-            st.html(f"""
-            <script>
-            (function() {{
-                try {{
-                    var val = localStorage.getItem("{AUTH_COOKIE_NAME}");
-                    if (val) {{
-                        var c = document.cookie;
-                        if (c.indexOf("{AUTH_COOKIE_NAME}=") === -1) {{
-                            var isHttps = window.location.protocol === "https:";
-                            var secureFlag = isHttps ? "; Secure" : "";
-                            document.cookie = "{AUTH_COOKIE_NAME}=" + encodeURIComponent(val) + "; path=/; max-age={COOKIE_MAX_AGE}; SameSite=Lax" + secureFlag;
-                            if (!sessionStorage.getItem("__sync_reloaded")) {{
-                                sessionStorage.setItem("__sync_reloaded", "1");
-                                window.location.reload();
-                            }}
-                        }}
-                    }}
-                }} catch(e) {{}}
-            }})();
-            </script>
-            """, unsafe_allow_javascript=True)
-        except Exception:
-            pass
+        """No-op fallback placeholder (managed directly by auth_storage component bridge)."""
+        pass
 
     def restore_persistent_session(self, token_str: Optional[str] = None) -> bool:
         """Attempt to restore user session from the client's persistent storage or cookie.

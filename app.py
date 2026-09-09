@@ -639,7 +639,7 @@ def main() -> None:
                             <div style="width: 36px; height: 36px; border: 3px solid #e2e8f0; border-top: 3px solid #2563eb; border-radius: 50%; animation: spin 0.8s linear infinite;"></div>
                         </div>
                         <style>@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }</style>
-                        """, unsafe_allow_javascript=True)
+                        """, unsafe_allow_html=True)
                     st.stop()
 
     if not auth.is_authenticated():

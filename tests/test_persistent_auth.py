@@ -448,6 +448,23 @@ class TestPersistentAuthSecurity(unittest.TestCase):
             self.assertFalse(self.auth_mgr.restore_persistent_session(token_str=None))
             self.assertFalse(self.auth_mgr.is_authenticated())
 
+    # ============================================================
+    # TEST 18: No Invalid unsafe_allow_javascript in st.markdown
+    # ============================================================
+    def test_18_no_invalid_unsafe_allow_javascript_in_markdown(self):
+        """Ensure no Python file uses unsafe_allow_javascript anywhere in the codebase."""
+        import os
+        root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        for dirpath, _, filenames in os.walk(root_dir):
+            if ".git" in dirpath or "__pycache__" in dirpath:
+                continue
+            for fname in filenames:
+                if fname.endswith(".py") and not fname.startswith("test_"):
+                    full_p = os.path.join(dirpath, fname)
+                    with open(full_p, "r", encoding="utf-8", errors="ignore") as f:
+                        content = f.read()
+                    self.assertNotIn("unsafe_allow_javascript", content, f"unsafe_allow_javascript found in {fname}")
+
 
 if __name__ == "__main__":
     unittest.main()
