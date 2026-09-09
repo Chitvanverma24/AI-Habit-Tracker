@@ -104,7 +104,7 @@ def main() -> None:
             with col_a:
                 if st.button("🚪 Sign Out", use_container_width=True, key="lic_signout"):
                     auth.logout()
-                    st.session_state.clear()
+                    st.session_state["_auth_logged_out"] = True
                     st.rerun()
 
 

@@ -71,7 +71,7 @@ def process_account_deletion() -> None:
         # Delete profile
         db.table("profiles").delete().eq("id", user_id).execute()
         auth.logout()
-        st.session_state.clear()
+        st.session_state["_auth_logged_out"] = True
         st.rerun()
     except Exception as e:
         st.error(f"Failed to delete account: {e}")
@@ -79,7 +79,7 @@ def process_account_deletion() -> None:
 
 def handle_logout() -> None:
     if auth.logout():
-        st.session_state.clear()
+        st.session_state["_auth_logged_out"] = True
         st.rerun()
     else:
         st.error("Failed to log out.")

@@ -5,11 +5,21 @@ Authentication Manager — Supabase Auth
 
 """
 
-import streamlit as st
-from database import get_db
-
-
+import base64
+import hashlib
+import json
+import time
+import urllib.parse
 from typing import Set, List, Optional
+
+import streamlit as st
+from cryptography.fernet import Fernet
+
+from database import get_db, _get_secret_value
+
+# Secure persistent authentication configuration
+AUTH_COOKIE_NAME = "__habit_tracker_auth"
+COOKIE_MAX_AGE = 30 * 86400  # 30 days in seconds
 
 
 class Role:
@@ -65,6 +75,203 @@ class AuthManager:
             return "Please enter a valid email address."
         return msg
 
+    # --- Persistent Session Cryptography & Cookie Management ---
+
+    def _get_cipher(self) -> Fernet:
+        """Derive an authenticated AES-128-CBC encryption cipher (Fernet) from server SECRET_KEY."""
+        secret = _get_secret_value("SECRET_KEY", "secret_key", "SUPABASE_KEY") or "habit-tracker-secure-fallback-salt"
+        key_bytes = hashlib.sha256(secret.encode("utf-8")).digest()
+        fernet_key = base64.urlsafe_b64encode(key_bytes)
+        return Fernet(fernet_key)
+
+    def _encrypt_session(self, user_id: str, refresh_token: str) -> str:
+        """Encrypt user ID and Supabase refresh token into a tamper-proof ciphertext.
+        Guarantees:
+        - Refresh token is NEVER stored or exposed in plain text.
+        - HMAC signature prevents client tampering or forgery.
+        - Contains timestamp for TTL verification.
+        """
+        try:
+            payload = json.dumps({
+                "uid": str(user_id) if user_id is not None else "",
+                "rt": str(refresh_token) if refresh_token is not None else "",
+                "ts": int(time.time())
+            })
+            cipher = self._get_cipher()
+            encrypted = cipher.encrypt(payload.encode("utf-8"))
+            return encrypted.decode("utf-8")
+        except Exception:
+            return ""
+
+    def _decrypt_session(self, token_str: str) -> Optional[dict]:
+        """Decrypt and verify an encrypted session token.
+        Enforces:
+        - Signature validity (rejects tampered tokens).
+        - Expiration TTL (rejects tokens older than COOKIE_MAX_AGE).
+        """
+        if not token_str or not isinstance(token_str, str):
+            return None
+        try:
+            cipher = self._get_cipher()
+            decrypted = cipher.decrypt(token_str.strip().encode("utf-8"), ttl=COOKIE_MAX_AGE)
+            data = json.loads(decrypted.decode("utf-8"))
+            if data and data.get("uid") and data.get("rt"):
+                return data
+            return None
+        except Exception:
+            return None
+
+    def _read_auth_cookie(self) -> Optional[str]:
+        """Read the persistent authentication cookie for the current client from st.context.cookies."""
+        try:
+            if hasattr(st, "context") and hasattr(st.context, "cookies"):
+                cookies = st.context.cookies
+                if cookies and AUTH_COOKIE_NAME in cookies:
+                    raw_val = cookies.get(AUTH_COOKIE_NAME)
+                    if raw_val:
+                        return urllib.parse.unquote(str(raw_val).strip())
+        except Exception:
+            pass
+        return None
+
+    def render_set_cookie_script(self, token_str: str) -> None:
+        """Render client-side script to store persistent auth cookie and local storage."""
+        if not token_str:
+            return
+        try:
+            st.html(f"""
+            <script>
+            (function() {{
+                try {{
+                    var val = "{token_str}";
+                    var isHttps = window.location.protocol === "https:";
+                    var secureFlag = isHttps ? "; Secure" : "";
+                    document.cookie = "{AUTH_COOKIE_NAME}=" + encodeURIComponent(val) + "; path=/; max-age={COOKIE_MAX_AGE}; SameSite=Lax" + secureFlag;
+                    try {{ localStorage.setItem("{AUTH_COOKIE_NAME}", val); }} catch(e) {{}}
+                }} catch(err) {{}}
+            }})();
+            </script>
+            """, unsafe_allow_javascript=True)
+        except Exception:
+            pass
+
+    def render_clear_cookie_script(self) -> None:
+        """Render client-side script to delete persistent auth cookies and local storage."""
+        try:
+            st.html(f"""
+            <script>
+            (function() {{
+                try {{
+                    var isHttps = window.location.protocol === "https:";
+                    var secureFlag = isHttps ? "; Secure" : "";
+                    document.cookie = "{AUTH_COOKIE_NAME}=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax" + secureFlag;
+                    try {{ localStorage.removeItem("{AUTH_COOKIE_NAME}"); }} catch(e) {{}}
+                    try {{ sessionStorage.removeItem("__sync_reloaded"); }} catch(e) {{}}
+                }} catch(err) {{}}
+            }})();
+            </script>
+            """, unsafe_allow_javascript=True)
+        except Exception:
+            pass
+
+    def render_storage_fallback_script(self) -> None:
+        """Render client-side fallback script for clients whose cookies were missing from initial HTTP request."""
+        try:
+            st.html(f"""
+            <script>
+            (function() {{
+                try {{
+                    var val = localStorage.getItem("{AUTH_COOKIE_NAME}");
+                    if (val) {{
+                        var c = document.cookie;
+                        if (c.indexOf("{AUTH_COOKIE_NAME}=") === -1) {{
+                            var isHttps = window.location.protocol === "https:";
+                            var secureFlag = isHttps ? "; Secure" : "";
+                            document.cookie = "{AUTH_COOKIE_NAME}=" + encodeURIComponent(val) + "; path=/; max-age={COOKIE_MAX_AGE}; SameSite=Lax" + secureFlag;
+                            if (!sessionStorage.getItem("__sync_reloaded")) {{
+                                sessionStorage.setItem("__sync_reloaded", "1");
+                                window.location.reload();
+                            }}
+                        }}
+                    }}
+                }} catch(e) {{}}
+            }})();
+            </script>
+            """, unsafe_allow_javascript=True)
+        except Exception:
+            pass
+
+    def restore_persistent_session(self) -> bool:
+        """Attempt to restore user session from the client's persistent cookie.
+        Guarantees:
+        1. Only inspects THIS client's cookie via st.context.cookies.
+        2. Validates and decrypts the encrypted session payload with server secret.
+        3. Authenticates against Supabase Auth using the decrypted refresh token.
+        4. Binds the authenticated session strictly to the current st.session_state.
+        5. If invalid or revoked, clears the cookie from the client and returns False.
+        """
+        # If already authenticated in current session, nothing to do
+        if self.is_authenticated():
+            return True
+
+        # If user explicitly logged out in this session, do not restore
+        if hasattr(st, "session_state") and st.session_state.get("_auth_logged_out"):
+            return False
+
+        # Guard against repeating failed restore attempts in the same Streamlit session
+        if hasattr(st, "session_state") and st.session_state.get("_auth_restore_attempted"):
+            return False
+
+        cookie_val = self._read_auth_cookie()
+        if not cookie_val:
+            return False
+
+        if hasattr(st, "session_state"):
+            st.session_state["_auth_restore_attempted"] = True
+
+        payload = self._decrypt_session(cookie_val)
+        if not payload:
+            self.render_clear_cookie_script()
+            return False
+
+        refresh_token = payload.get("rt")
+        if not refresh_token:
+            self.render_clear_cookie_script()
+            return False
+
+        try:
+            client = self.db
+            response = client.auth.refresh_session(refresh_token)
+            if response and hasattr(response, "user") and response.user:
+                user = response.user
+                session = getattr(response, "session", None)
+                if session and hasattr(session, "access_token") and hasattr(st, "session_state"):
+                    st.session_state["auth_user"] = user
+                    st.session_state["auth_session"] = session
+                    st.session_state["auth_user_id"] = user.id
+                    st.session_state["auth_user_email"] = user.email
+                    st.session_state["auth_token"] = session.access_token
+                    try:
+                        client.postgrest.auth(session.access_token)
+                    except Exception:
+                        pass
+                    st.session_state["_supabase_client"] = client
+
+                    # If refresh token was rotated, schedule updated cookie
+                    new_rt = getattr(session, "refresh_token", None)
+                    if new_rt and new_rt != refresh_token:
+                        new_enc = self._encrypt_session(user.id, new_rt)
+                        st.session_state["_pending_auth_cookie"] = new_enc
+
+                    return True
+
+            self.render_clear_cookie_script()
+            return False
+        except Exception:
+            # Refresh token was invalid, expired, revoked, or user deleted
+            self.render_clear_cookie_script()
+            return False
+
     # --- Core Auth Operations ---
 
     def login(self, email: str, password: str):
@@ -90,6 +297,18 @@ class AuthManager:
                         except Exception:
                             pass
                     st.session_state["_supabase_client"] = client
+                    st.session_state.pop("_auth_logged_out", None)
+                    st.session_state.pop("_auth_restore_attempted", None)
+
+                    # Create encrypted persistent cookie payload
+                    try:
+                        if session and hasattr(session, "refresh_token") and session.refresh_token:
+                            enc = self._encrypt_session(user.id, session.refresh_token)
+                            if enc:
+                                st.session_state["_pending_auth_cookie"] = enc
+                    except Exception:
+                        pass
+
             return True, response
         except Exception as e:
             return False, self._format_auth_error(e)
@@ -128,12 +347,24 @@ class AuthManager:
                         except Exception:
                             pass
                     st.session_state["_supabase_client"] = client
+                    st.session_state.pop("_auth_logged_out", None)
+                    st.session_state.pop("_auth_restore_attempted", None)
+
+                    # Create encrypted persistent cookie payload
+                    try:
+                        if hasattr(session, "refresh_token") and session.refresh_token:
+                            enc = self._encrypt_session(response.user.id, session.refresh_token)
+                            if enc:
+                                st.session_state["_pending_auth_cookie"] = enc
+                    except Exception:
+                        pass
+
             return True, response
         except Exception as e:
             return False, self._format_auth_error(e)
 
     def logout(self):
-        """Sign out current user and completely wipe per-session auth state."""
+        """Sign out current user, revoke session in Supabase, and completely wipe per-session auth state."""
         try:
             if hasattr(st, "session_state") and "_supabase_client" in st.session_state:
                 try:
@@ -144,7 +375,7 @@ class AuthManager:
             pass
 
         if hasattr(st, "session_state"):
-            for k in ["auth_user", "auth_session", "auth_user_id", "auth_user_email", "auth_token", "_supabase_client"]:
+            for k in ["auth_user", "auth_session", "auth_user_id", "auth_user_email", "auth_token", "_supabase_client", "_pending_auth_cookie", "_auth_restore_attempted"]:
                 st.session_state.pop(k, None)
             st.session_state.clear()
 
@@ -351,9 +582,15 @@ class AuthManager:
     # --- Session Management ---
 
     def refresh_session(self):
-        """Refresh the authentication session token."""
+        """Refresh the authentication session token if needed."""
         if not self.is_authenticated():
             return None
+        session = self.get_session()
+        # Smart refresh: only refresh if token expires within 5 minutes
+        if session and hasattr(session, "expires_at") and session.expires_at:
+            if session.expires_at - int(time.time()) > 300:
+                return session
+
         try:
             refreshed = self.db.auth.refresh_session()
             if refreshed and hasattr(refreshed, "session") and refreshed.session and hasattr(st, "session_state"):
@@ -364,6 +601,12 @@ class AuthManager:
                         self.db.postgrest.auth(refreshed.session.access_token)
                     except Exception:
                         pass
+                # If refresh token was rotated, update persistent cookie
+                if hasattr(refreshed.session, "refresh_token") and refreshed.session.refresh_token:
+                    user_id = self.get_user_id()
+                    if user_id:
+                        enc = self._encrypt_session(user_id, refreshed.session.refresh_token)
+                        st.session_state["_pending_auth_cookie"] = enc
             return refreshed
         except Exception:
             return None

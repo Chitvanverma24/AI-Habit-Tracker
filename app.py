@@ -81,7 +81,7 @@ def render_maintenance_page() -> None:
     with col2:
         if st.button("🚪 Sign Out", key="maint_logout", use_container_width=True):
             auth.logout()
-            st.session_state.clear()
+            st.session_state["_auth_logged_out"] = True
             st.rerun()
 
 
@@ -465,7 +465,7 @@ def render_sidebar() -> None:
         st.divider()
         if st.button("🚪  Sign Out", key="nav_logout", use_container_width=True):
             auth.logout()
-            st.session_state.clear()
+            st.session_state["_auth_logged_out"] = True
             st.rerun()
 
 
@@ -587,7 +587,23 @@ def main() -> None:
     # END TEMPORARILY DISABLED — PASSWORD RECOVERY REDIRECT DETECTION
     # ──────────────────────────────────────────────────────────────────────────
 
+    # If user explicitly logged out in this session, clear client cookie
+    if hasattr(st, "session_state") and st.session_state.pop("_auth_logged_out", None):
+        auth.render_clear_cookie_script()
+
+    # Attempt to restore persistent session for THIS specific browser/client
     if not auth.is_authenticated():
+        auth.restore_persistent_session()
+
+    # If any pending persistent cookie needs to be written to client (e.g. after login or token rotation)
+    if hasattr(st, "session_state") and "_pending_auth_cookie" in st.session_state:
+        pending_token = st.session_state.pop("_pending_auth_cookie", None)
+        if pending_token:
+            auth.render_set_cookie_script(pending_token)
+
+    if not auth.is_authenticated():
+        # Fallback check for clients whose cookies were missing from initial HTTP request
+        auth.render_storage_fallback_script()
         print("[app] No active session — rendering login screen", file=sys.stderr)
         render_auth_ui()
         return
