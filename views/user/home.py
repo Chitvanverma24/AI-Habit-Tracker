@@ -84,6 +84,8 @@ def main():
 
     ui_components.render_hero(f"{welcome}, {user_name}! 👋", "Consistency is the key to building lasting habits. Let's make today count.", icon="🏠")
 
+    st.info("💡 Need to change your password? Head to Profile → Security & Data to securely update your account password anytime.")
+
     if "home_error" in st.session_state:
         st.error(st.session_state.pop("home_error"))
 
