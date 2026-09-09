@@ -337,6 +337,117 @@ class TestPersistentAuthSecurity(unittest.TestCase):
             self.assertFalse(restored)
             self.assertFalse(self.auth_mgr.is_authenticated())
 
+    # ============================================================
+    # TEST 13: Direct Token Restoration from Client Storage Bridge
+    # ============================================================
+    def test_13_restore_from_client_storage_token(self):
+        """Persistent session restores directly from the client-storage token string."""
+        raw_refresh = "client-storage-refresh-token"
+        token_str = self.auth_mgr._encrypt_session("user-client-123", raw_refresh)
+
+        session = MockSessionState({})
+        mock_db = MagicMock()
+        mock_user = MagicMock(id="user-client-123", email="client@example.com")
+        mock_session = MagicMock(access_token="tok-access-client", refresh_token=raw_refresh)
+        mock_db.auth.refresh_session.return_value = MagicMock(user=mock_user, session=mock_session)
+
+        with patch("streamlit.session_state", session), \
+             patch("auth.get_db", return_value=mock_db):
+            restored = self.auth_mgr.restore_persistent_session(token_str=token_str)
+            self.assertTrue(restored)
+            self.assertTrue(self.auth_mgr.is_authenticated())
+            self.assertEqual(self.auth_mgr.get_user_id(), "user-client-123")
+            self.assertEqual(self.auth_mgr.get_user_email(), "client@example.com")
+            self.assertEqual(session.get("auth_token"), "tok-access-client")
+
+    # ============================================================
+    # TEST 14: Client Storage Component Integrity
+    # ============================================================
+    def test_14_component_files_exist_and_valid(self):
+        """Verify auth_storage component HTML and Python bridge exist and include critical keys."""
+        import os
+        component_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "components", "auth_storage")
+        index_path = os.path.join(component_dir, "index.html")
+        init_path = os.path.join(component_dir, "__init__.py")
+
+        self.assertTrue(os.path.exists(index_path), "index.html must exist")
+        self.assertTrue(os.path.exists(init_path), "__init__.py must exist")
+
+        with open(index_path, "r", encoding="utf-8") as f:
+            html = f.read()
+
+        self.assertIn("_sb_auth_session", html)
+        self.assertIn("localStorage", html)
+        self.assertIn("streamlit:componentReady", html)
+        self.assertIn("streamlit:setComponentValue", html)
+        self.assertIn("streamlit:setFrameHeight", html)
+
+    # ============================================================
+    # TEST 15: Invalid Client Storage Token Triggers Pending Clear
+    # ============================================================
+    def test_15_invalid_client_token_triggers_clear(self):
+        """Invalid or corrupted token from client storage sets _pending_auth_clear."""
+        session = MockSessionState({})
+        with patch("streamlit.session_state", session):
+            restored = self.auth_mgr.restore_persistent_session(token_str="corrupted-garbage-token")
+            self.assertFalse(restored)
+            self.assertFalse(self.auth_mgr.is_authenticated())
+            self.assertTrue(session.get("_pending_auth_clear"))
+
+    # ============================================================
+    # TEST 16: Browser Close & Reopen Flow Simulation
+    # ============================================================
+    def test_16_browser_close_and_reopen_simulation(self):
+        """Simulate: Login -> browser closed (session_state dies) -> reopen with client storage token."""
+        mock_db = MagicMock()
+        mock_user = MagicMock(id="user-reopen-uuid", email="reopen@example.com")
+        mock_session = MagicMock(access_token="tok-reopen-1", refresh_token="rt-reopen-1")
+        mock_db.auth.sign_in_with_password.return_value = MagicMock(user=mock_user, session=mock_session)
+
+        # 1. User logs in
+        session1 = MockSessionState({})
+        with patch("streamlit.session_state", session1), \
+             patch("auth.get_db", return_value=mock_db):
+            ok, _ = self.auth_mgr.login("reopen@example.com", "Password123")
+            self.assertTrue(ok)
+            saved_token = session1.get("_pending_auth_save")
+            self.assertIsNotNone(saved_token)
+
+        # 2. Browser closes: session1 is destroyed.
+        del session1
+
+        # 3. User reopens browser: session2 starts empty, but client storage returns saved_token
+        session2 = MockSessionState({})
+        refreshed_session = MagicMock(access_token="tok-reopen-2", refresh_token="rt-reopen-1")
+        mock_db.auth.refresh_session.return_value = MagicMock(user=mock_user, session=refreshed_session)
+
+        with patch("streamlit.session_state", session2), \
+             patch("auth.get_db", return_value=mock_db):
+            restored = self.auth_mgr.restore_persistent_session(token_str=saved_token)
+            self.assertTrue(restored)
+            self.assertTrue(self.auth_mgr.is_authenticated())
+            self.assertEqual(self.auth_mgr.get_user_id(), "user-reopen-uuid")
+            self.assertEqual(session2.get("auth_token"), "tok-reopen-2")
+
+    # ============================================================
+    # TEST 17: Sign Out Removes Persistent Session
+    # ============================================================
+    def test_17_signout_prevents_restoration_on_reopen(self):
+        """Simulate: Login -> Sign Out -> browser reopens with empty storage -> Login screen."""
+        session = MockSessionState({
+            "auth_user_id": "user-signout-test",
+            "auth_token": "active-token"
+        })
+        with patch("streamlit.session_state", session):
+            self.auth_mgr.logout()
+            # UI sets logout flags
+            session["_auth_logged_out"] = True
+            session["_pending_auth_clear"] = True
+
+            # If reopen occurs with no token (client storage cleared)
+            self.assertFalse(self.auth_mgr.restore_persistent_session(token_str=None))
+            self.assertFalse(self.auth_mgr.is_authenticated())
+
 
 if __name__ == "__main__":
     unittest.main()

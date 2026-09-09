@@ -105,6 +105,7 @@ def main() -> None:
                 if st.button("🚪 Sign Out", use_container_width=True, key="lic_signout"):
                     auth.logout()
                     st.session_state["_auth_logged_out"] = True
+                    st.session_state["_pending_auth_clear"] = True
                     st.rerun()
 
 

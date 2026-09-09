@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 0;
+      height: 0;
+      overflow: hidden;
+      border: none;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+<script>
+(function() {
+  const STORAGE_KEY = "_sb_auth_session";
+
+  function sendMessage(type, payload) {
+    try {
+      window.parent.postMessage({
+        isStreamlitMessage: true,
+        type: type,
+        ...(payload || {})
+      }, "*");
+    } catch (e) {}
+  }
+
+  function getStoredToken() {
+    let token = null;
+    // 1. Try local storage of this iframe
+    try {
+      token = window.localStorage.getItem(STORAGE_KEY);
+    } catch (e) {}
+
+    // 2. Try local storage of parent window
+    if (!token) {
+      try {
+        if (window.parent && window.parent.localStorage) {
+          token = window.parent.localStorage.getItem(STORAGE_KEY);
+        }
+      } catch (e) {}
+    }
+
+    // 3. Try document cookie of this iframe
+    if (!token) {
+      try {
+        const match = document.cookie.match(new RegExp('(?:^|;\\s*)' + STORAGE_KEY + '=([^;]*)'));
+        if (match) token = decodeURIComponent(match[1]);
+      } catch (e) {}
+    }
+
+    // 4. Try document cookie of parent window
+    if (!token) {
+      try {
+        if (window.parent && window.parent.document) {
+          const match = window.parent.document.cookie.match(new RegExp('(?:^|;\\s*)' + STORAGE_KEY + '=([^;]*)'));
+          if (match) token = decodeURIComponent(match[1]);
+        }
+      } catch (e) {}
+    }
+
+    return token ? token.trim() : null;
+  }
+
+  function saveToken(token) {
+    if (!token) return;
+    try { window.localStorage.setItem(STORAGE_KEY, token); } catch (e) {}
+    try {
+      if (window.parent && window.parent.localStorage) {
+        window.parent.localStorage.setItem(STORAGE_KEY, token);
+      }
+    } catch (e) {}
+
+    const isHttps = window.location.protocol === "https:";
+    const secure = isHttps ? "; Secure" : "";
+    const cookieStr = STORAGE_KEY + "=" + encodeURIComponent(token) + "; path=/; max-age=2592000; SameSite=Lax" + secure;
+    try { document.cookie = cookieStr; } catch (e) {}
+    try {
+      if (window.parent && window.parent.document) {
+        window.parent.document.cookie = cookieStr;
+      }
+    } catch (e) {}
+  }
+
+  function clearToken() {
+    try { window.localStorage.removeItem(STORAGE_KEY); } catch (e) {}
+    try {
+      if (window.parent && window.parent.localStorage) {
+        window.parent.localStorage.removeItem(STORAGE_KEY);
+      }
+    } catch (e) {}
+
+    const isHttps = window.location.protocol === "https:";
+    const secure = isHttps ? "; Secure" : "";
+    const cookieStr = STORAGE_KEY + "=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax" + secure;
+    try { document.cookie = cookieStr; } catch (e) {}
+    try {
+      if (window.parent && window.parent.document) {
+        window.parent.document.cookie = cookieStr;
+      }
+    } catch (e) {}
+  }
+
+  function onRender(event) {
+    const data = event.data;
+    if (!data || data.type !== "streamlit:render") return;
+
+    // Ensure zero frame height
+    sendMessage("streamlit:setFrameHeight", { height: 0 });
+
+    const args = data.args || {};
+    const action = args.action || "sync";
+    const token = args.token || null;
+
+    if (action === "save" && token) {
+      saveToken(token);
+      sendMessage("streamlit:setComponentValue", {
+        value: { action: "saved", token: token, ready: true, hasToken: true }
+      });
+    } else if (action === "clear") {
+      clearToken();
+      sendMessage("streamlit:setComponentValue", {
+        value: { action: "cleared", token: null, ready: true, hasToken: false }
+      });
+    } else {
+      // action === "sync"
+      const currentToken = getStoredToken();
+      sendMessage("streamlit:setComponentValue", {
+        value: {
+          action: "synced",
+          token: currentToken,
+          ready: true,
+          hasToken: !!currentToken
+        }
+      });
+    }
+  }
+
+  window.addEventListener("message", onRender);
+
+  // Notify Streamlit that component is ready to receive args
+  sendMessage("streamlit:componentReady", { apiVersion: 1 });
+  sendMessage("streamlit:setFrameHeight", { height: 0 });
+})();
+</script>
+</body>
+</html>

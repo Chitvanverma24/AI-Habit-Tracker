@@ -201,28 +201,28 @@ class AuthManager:
         except Exception:
             pass
 
-    def restore_persistent_session(self) -> bool:
-        """Attempt to restore user session from the client's persistent cookie.
+    def restore_persistent_session(self, token_str: Optional[str] = None) -> bool:
+        """Attempt to restore user session from the client's persistent storage or cookie.
         Guarantees:
-        1. Only inspects THIS client's cookie via st.context.cookies.
+        1. Only inspects THIS client's storage token or cookie.
         2. Validates and decrypts the encrypted session payload with server secret.
         3. Authenticates against Supabase Auth using the decrypted refresh token.
         4. Binds the authenticated session strictly to the current st.session_state.
-        5. If invalid or revoked, clears the cookie from the client and returns False.
+        5. If invalid or revoked, clears the storage/cookie from the client and returns False.
         """
         # If already authenticated in current session, nothing to do
         if self.is_authenticated():
             return True
 
         # If user explicitly logged out in this session, do not restore
-        if hasattr(st, "session_state") and st.session_state.get("_auth_logged_out"):
+        if hasattr(st, "session_state") and (st.session_state.get("_auth_logged_out") or st.session_state.get("_auth_logged_out_done")):
             return False
 
         # Guard against repeating failed restore attempts in the same Streamlit session
         if hasattr(st, "session_state") and st.session_state.get("_auth_restore_attempted"):
             return False
 
-        cookie_val = self._read_auth_cookie()
+        cookie_val = token_str if token_str else self._read_auth_cookie()
         if not cookie_val:
             return False
 
@@ -232,11 +232,15 @@ class AuthManager:
         payload = self._decrypt_session(cookie_val)
         if not payload:
             self.render_clear_cookie_script()
+            if hasattr(st, "session_state"):
+                st.session_state["_pending_auth_clear"] = True
             return False
 
         refresh_token = payload.get("rt")
         if not refresh_token:
             self.render_clear_cookie_script()
+            if hasattr(st, "session_state"):
+                st.session_state["_pending_auth_clear"] = True
             return False
 
         try:
@@ -257,19 +261,25 @@ class AuthManager:
                         pass
                     st.session_state["_supabase_client"] = client
 
-                    # If refresh token was rotated, schedule updated cookie
+                    # If refresh token was rotated, schedule updated persistent storage
                     new_rt = getattr(session, "refresh_token", None)
                     if new_rt and new_rt != refresh_token:
                         new_enc = self._encrypt_session(user.id, new_rt)
-                        st.session_state["_pending_auth_cookie"] = new_enc
+                        if new_enc:
+                            st.session_state["_pending_auth_cookie"] = new_enc
+                            st.session_state["_pending_auth_save"] = new_enc
 
                     return True
 
             self.render_clear_cookie_script()
+            if hasattr(st, "session_state"):
+                st.session_state["_pending_auth_clear"] = True
             return False
         except Exception:
             # Refresh token was invalid, expired, revoked, or user deleted
             self.render_clear_cookie_script()
+            if hasattr(st, "session_state"):
+                st.session_state["_pending_auth_clear"] = True
             return False
 
     # --- Core Auth Operations ---
@@ -306,6 +316,7 @@ class AuthManager:
                             enc = self._encrypt_session(user.id, session.refresh_token)
                             if enc:
                                 st.session_state["_pending_auth_cookie"] = enc
+                                st.session_state["_pending_auth_save"] = enc
                     except Exception:
                         pass
 
@@ -356,6 +367,7 @@ class AuthManager:
                             enc = self._encrypt_session(response.user.id, session.refresh_token)
                             if enc:
                                 st.session_state["_pending_auth_cookie"] = enc
+                                st.session_state["_pending_auth_save"] = enc
                     except Exception:
                         pass
 
@@ -375,7 +387,7 @@ class AuthManager:
             pass
 
         if hasattr(st, "session_state"):
-            for k in ["auth_user", "auth_session", "auth_user_id", "auth_user_email", "auth_token", "_supabase_client", "_pending_auth_cookie", "_auth_restore_attempted"]:
+            for k in ["auth_user", "auth_session", "auth_user_id", "auth_user_email", "auth_token", "_supabase_client", "_pending_auth_cookie", "_pending_auth_save", "_auth_restore_attempted"]:
                 st.session_state.pop(k, None)
             st.session_state.clear()
 

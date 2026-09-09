@@ -82,6 +82,7 @@ def render_maintenance_page() -> None:
         if st.button("🚪 Sign Out", key="maint_logout", use_container_width=True):
             auth.logout()
             st.session_state["_auth_logged_out"] = True
+            st.session_state["_pending_auth_clear"] = True
             st.rerun()
 
 
@@ -466,6 +467,7 @@ def render_sidebar() -> None:
         if st.button("🚪  Sign Out", key="nav_logout", use_container_width=True):
             auth.logout()
             st.session_state["_auth_logged_out"] = True
+            st.session_state["_pending_auth_clear"] = True
             st.rerun()
 
 
@@ -587,23 +589,60 @@ def main() -> None:
     # END TEMPORARILY DISABLED — PASSWORD RECOVERY REDIRECT DETECTION
     # ──────────────────────────────────────────────────────────────────────────
 
-    # If user explicitly logged out in this session, clear client cookie
-    if hasattr(st, "session_state") and st.session_state.pop("_auth_logged_out", None):
+    # ──────────────────────────────────────────────────────────────────────────
+    # Persistent Client Authentication Bridge (Community Cloud + Local + Mobile)
+    # ──────────────────────────────────────────────────────────────────────────
+    from components.auth_storage import sync_auth_storage
+
+    # Check for pending storage clear (e.g. on logout or invalid session)
+    has_pending_clear = False
+    if hasattr(st, "session_state"):
+        if st.session_state.pop("_pending_auth_clear", None) or st.session_state.pop("_auth_logged_out", None):
+            has_pending_clear = True
+
+    if has_pending_clear:
+        sync_auth_storage(action="clear", key="_auth_storage_bridge")
         auth.render_clear_cookie_script()
+        if hasattr(st, "session_state"):
+            st.session_state["_auth_logged_out_done"] = True
 
-    # Attempt to restore persistent session for THIS specific browser/client
+    # Check for pending storage save (after successful login, signup, or token rotation)
+    elif hasattr(st, "session_state") and ("_pending_auth_save" in st.session_state or "_pending_auth_cookie" in st.session_state):
+        token_to_save = st.session_state.pop("_pending_auth_save", None) or st.session_state.pop("_pending_auth_cookie", None)
+        if token_to_save:
+            sync_auth_storage(action="save", token=token_to_save, key="_auth_storage_bridge")
+            auth.render_set_cookie_script(token_to_save)
+            if hasattr(st, "session_state"):
+                st.session_state.pop("_auth_logged_out_done", None)
+
+    # If unauthenticated, restore session from client persistent storage or cookies
+    elif not auth.is_authenticated():
+        # 1. First check immediate HTTP cookie if present in request (local dev / custom proxies)
+        if auth.restore_persistent_session():
+            st.rerun()
+
+        # 2. If user hasn't explicitly logged out in this session, synchronize with client browser storage
+        if not (hasattr(st, "session_state") and st.session_state.get("_auth_logged_out_done")):
+            client_res = sync_auth_storage(action="sync", key="_auth_storage_bridge")
+            if client_res is not None:
+                token_from_client = client_res.get("token")
+                if token_from_client:
+                    if auth.restore_persistent_session(token_from_client):
+                        st.rerun()
+            else:
+                # Component is mounting in the client's browser (takes < 50ms)
+                if not st.session_state.get("_auth_sync_checked"):
+                    st.session_state["_auth_sync_checked"] = True
+                    with st.empty():
+                        st.markdown("""
+                        <div style="display: flex; justify-content: center; align-items: center; min-height: 350px;">
+                            <div style="width: 36px; height: 36px; border: 3px solid #e2e8f0; border-top: 3px solid #2563eb; border-radius: 50%; animation: spin 0.8s linear infinite;"></div>
+                        </div>
+                        <style>@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }</style>
+                        """, unsafe_allow_javascript=True)
+                    st.stop()
+
     if not auth.is_authenticated():
-        auth.restore_persistent_session()
-
-    # If any pending persistent cookie needs to be written to client (e.g. after login or token rotation)
-    if hasattr(st, "session_state") and "_pending_auth_cookie" in st.session_state:
-        pending_token = st.session_state.pop("_pending_auth_cookie", None)
-        if pending_token:
-            auth.render_set_cookie_script(pending_token)
-
-    if not auth.is_authenticated():
-        # Fallback check for clients whose cookies were missing from initial HTTP request
-        auth.render_storage_fallback_script()
         print("[app] No active session — rendering login screen", file=sys.stderr)
         render_auth_ui()
         return

@@ -72,6 +72,7 @@ def process_account_deletion() -> None:
         db.table("profiles").delete().eq("id", user_id).execute()
         auth.logout()
         st.session_state["_auth_logged_out"] = True
+        st.session_state["_pending_auth_clear"] = True
         st.rerun()
     except Exception as e:
         st.error(f"Failed to delete account: {e}")
@@ -80,6 +81,7 @@ def process_account_deletion() -> None:
 def handle_logout() -> None:
     if auth.logout():
         st.session_state["_auth_logged_out"] = True
+        st.session_state["_pending_auth_clear"] = True
         st.rerun()
     else:
         st.error("Failed to log out.")
@@ -128,6 +130,8 @@ def render_profile_tab(profile: Dict[str, Any], email: str) -> None:
     is_admin = profile.get("is_admin", False)
 
     role_badge = ui_components.render_badge("ADMIN", "primary") if is_admin else ui_components.render_badge("USER", "active")
+
+    st.info("💡 Need to change your password? Head to Profile → Security & Data to securely update your account password anytime.")
 
     with st.container(border=True):
         col_img, col_info = st.columns([0.15, 0.85])
