@@ -183,41 +183,39 @@ def render_chat_and_input(user_id: str) -> None:
         """
         <style>
 
-        /* =====================================================
-           AI HABIT COACH CHAT INPUT ONLY
-           ===================================================== */
+        /* AI Habit Coach chat input only */
 
-        /* Main Streamlit chat input container */
         div[data-testid="stChatInput"] {
+            background-color: #0f172a !important;
+            border-radius: 12px !important;
+        }
+
+        div[data-testid="stChatInput"] > div {
             background-color: #0f172a !important;
         }
 
-        /* Actual text input container */
         div[data-testid="stChatInput"] [data-baseweb="textarea"] {
             background-color: #0f172a !important;
         }
 
-        /* Actual typing area */
         div[data-testid="stChatInput"] textarea {
-            color: #FFFFFF !important;
-            -webkit-text-fill-color: #FFFFFF !important;
-            caret-color: #FFFFFF !important;
+            color: #000000 !important;
+            -webkit-text-fill-color: #000000 !important;
+            caret-color: #000000 !important;
             background-color: #0f172a !important;
         }
 
-        /* Keep white text while typing/focused */
         div[data-testid="stChatInput"] textarea:focus,
         div[data-testid="stChatInput"] textarea:active {
-            color: #FFFFFF !important;
-            -webkit-text-fill-color: #FFFFFF !important;
-            caret-color: #FFFFFF !important;
+            color: #000000 !important;
+            -webkit-text-fill-color: #000000 !important;
+            caret-color: #000000 !important;
             background-color: #0f172a !important;
         }
 
-        /* Placeholder */
         div[data-testid="stChatInput"] textarea::placeholder {
-            color: #475569 !important;
-            -webkit-text-fill-color: #475569 !important;
+            color: #cbd5e1 !important;
+            -webkit-text-fill-color: #cbd5e1 !important;
             opacity: 1 !important;
         }
 
@@ -230,7 +228,7 @@ def render_chat_and_input(user_id: str) -> None:
     just_sent_message = st.session_state.pop("_coach_message_sent", False)
 
     # On initial page load / navigation (not right after sending a message), ensure view starts at top
-    just_sent_message = st.session_state.pop("_coach_message_sent", False)
+    # just_sent_message = st.session_state.pop("_coach_message_sent", False)
     if not just_sent_message:
         import streamlit.components.v1 as components
         components.html(
@@ -266,7 +264,6 @@ def render_chat_and_input(user_id: str) -> None:
 
     chat_col, = st.columns(1)
     with chat_col:
-        with st.container(key="ai_coach_input_container"):
             prompt = st.chat_input(
                 "Ask your coach for advice, motivation, or habit strategy...",
                 key="ai_coach_chat_input"
