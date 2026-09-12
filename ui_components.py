@@ -304,6 +304,11 @@ def inject_global_css():
     }
 
     /* ===== Chat Input Text Visibility (AI Habit Coach) ===== */
+    .stApp .st-key-ai_coach_input_container [data-testid="stChatInput"] textarea,
+    .stApp .st-key-ai_coach_input_container textarea,
+    .stApp .st-key-ai_coach_chat_input textarea,
+    .st-key-ai_coach_input_container textarea,
+    .st-key-ai_coach_chat_input textarea,
     .stApp [data-testid="stChatInput"] textarea,
     .stApp [data-testid="stChatInput"] input,
     .stApp [data-testid="stChatInputTextArea"],
@@ -322,6 +327,11 @@ def inject_global_css():
         caret-color: #FFFFFF !important;
     }
 
+    .stApp .st-key-ai_coach_input_container [data-testid="stChatInput"] textarea:focus,
+    .stApp .st-key-ai_coach_input_container textarea:focus,
+    .stApp .st-key-ai_coach_chat_input textarea:focus,
+    .st-key-ai_coach_input_container textarea:focus,
+    .st-key-ai_coach_chat_input textarea:focus,
     .stApp [data-testid="stChatInput"] textarea:focus,
     .stApp [data-testid="stChatInput"] textarea:active,
     .stApp [data-testid="stChatInputTextArea"]:focus,
@@ -336,6 +346,8 @@ def inject_global_css():
         caret-color: #FFFFFF !important;
     }
 
+    .stApp .st-key-ai_coach_input_container textarea::placeholder,
+    .st-key-ai_coach_chat_input textarea::placeholder,
     .stApp [data-testid="stChatInput"] textarea::placeholder,
     .stApp [data-testid="stChatInputTextArea"]::placeholder,
     .stApp .stChatInput textarea::placeholder,
