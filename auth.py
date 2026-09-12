@@ -216,6 +216,25 @@ class AuthManager:
                         pass
                     st.session_state["_supabase_client"] = client
 
+                    # Check temporary password status and 24-hour expiration
+                    try:
+                        from services.password_reset_service import PasswordResetService
+                        temp_info = PasswordResetService.check_user_temporary_password_status(user)
+                        if temp_info.get("is_temporary"):
+                            if temp_info.get("is_expired"):
+                                self.logout()
+                                self.render_clear_cookie_script()
+                                if hasattr(st, "session_state"):
+                                    st.session_state["_pending_auth_clear"] = True
+                                    st.session_state["auth_error"] = "Your temporary password has expired. Please submit a new password reset request."
+                                return False
+                            else:
+                                st.session_state["must_change_password"] = True
+                                st.session_state["is_temporary_password"] = True
+                                st.session_state["temp_password_expires_at"] = temp_info.get("expires_at")
+                    except Exception:
+                        pass
+
                     # If refresh token was rotated, schedule updated persistent storage
                     new_rt = getattr(session, "refresh_token", None)
                     if new_rt and new_rt != refresh_token:
@@ -264,6 +283,21 @@ class AuthManager:
                     st.session_state["_supabase_client"] = client
                     st.session_state.pop("_auth_logged_out", None)
                     st.session_state.pop("_auth_restore_attempted", None)
+
+                    # Check temporary password status and 24-hour expiration
+                    try:
+                        from services.password_reset_service import PasswordResetService
+                        temp_info = PasswordResetService.check_user_temporary_password_status(user)
+                        if temp_info.get("is_temporary"):
+                            if temp_info.get("is_expired"):
+                                self.logout()
+                                return False, "Your temporary password has expired. Please submit a new password reset request."
+                            else:
+                                st.session_state["must_change_password"] = True
+                                st.session_state["is_temporary_password"] = True
+                                st.session_state["temp_password_expires_at"] = temp_info.get("expires_at")
+                    except Exception:
+                        pass
 
                     # Create encrypted persistent cookie payload
                     try:
@@ -342,7 +376,7 @@ class AuthManager:
             pass
 
         if hasattr(st, "session_state"):
-            for k in ["auth_user", "auth_session", "auth_user_id", "auth_user_email", "auth_token", "_supabase_client", "_pending_auth_cookie", "_pending_auth_save", "_auth_restore_attempted"]:
+            for k in ["auth_user", "auth_session", "auth_user_id", "auth_user_email", "auth_token", "_supabase_client", "_pending_auth_cookie", "_pending_auth_save", "_auth_restore_attempted", "must_change_password", "is_temporary_password", "temp_password_expires_at"]:
                 st.session_state.pop(k, None)
             st.session_state.clear()
 
@@ -358,6 +392,17 @@ class AuthManager:
         """Update password for the active authenticated session."""
         try:
             response = self.db.auth.update_user({"password": new_password})
+            # Clear temporary password state if active
+            try:
+                from services.password_reset_service import PasswordResetService
+                user_id = self.get_user_id()
+                PasswordResetService.clear_temporary_password_status(user_id)
+            except Exception:
+                pass
+            if hasattr(st, "session_state"):
+                st.session_state.pop("must_change_password", None)
+                st.session_state.pop("is_temporary_password", None)
+                st.session_state.pop("temp_password_expires_at", None)
             return True, response
         except Exception as e:
             return False, self._format_auth_error(e)

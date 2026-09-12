@@ -179,6 +179,78 @@ def render_recent_activity() -> None:
             st.info("No recent habits.")
 
 
+def render_password_reset_requests() -> None:
+    """Renders Password Reset Requests management section for Administrators."""
+    st.subheader("🔑 Password Reset Requests")
+
+    from services.password_reset_service import PasswordResetService
+
+    # Temporary Password Display Banner (Shown to Admin ONLY immediately after processing)
+    if "admin_temp_password_info" in st.session_state:
+        target_email, temp_pwd = st.session_state["admin_temp_password_info"]
+        with st.container(border=True):
+            st.success(f"✅ Password reset generated for **{target_email}**")
+            st.warning(
+                "⚠️ **IMPORTANT: Copy this temporary password now.\n"
+                "It will not be displayed again.**"
+            )
+            st.text_input("Temporary Password (Valid for 24 hours)", value=temp_pwd, key="display_temp_pwd")
+            st.caption(
+                "ℹ️ **Manual Support Workflow**: The application does not send emails automatically. "
+                "Please manually email this temporary password to the user's registered address from your support email."
+            )
+            if st.button("Dismiss Temporary Password", key="btn_dismiss_temp_pwd"):
+                st.session_state.pop("admin_temp_password_info", None)
+                st.rerun()
+
+    requests = PasswordResetService.get_all_requests()
+    pending_requests = [r for r in requests if str(r.get("status", "")).lower() == "pending"]
+
+    if not pending_requests:
+        st.info("No pending password reset requests.")
+    else:
+        st.caption(f"Showing {len(pending_requests)} pending request(s)")
+        for req in pending_requests:
+            req_id = req.get("id")
+            req_email = req.get("email", "")
+            raw_time = req.get("created_at", "")
+            try:
+                formatted_time = datetime.fromisoformat(raw_time).strftime("%B %d, %Y at %H:%M UTC")
+            except Exception:
+                formatted_time = raw_time or "Recently"
+
+            with st.container(border=True):
+                c_info, c_action = st.columns([0.7, 0.3])
+                with c_info:
+                    st.markdown(f"**Email:** `{req_email}`")
+                    st.write(f"**Requested:** {formatted_time}")
+                    st.markdown(f"**Status:** {ui_components.render_badge('Pending', 'warning')}", unsafe_allow_html=True)
+
+                with c_action:
+                    # If this request is currently in confirmation state
+                    if st.session_state.get("confirm_reset_req_id") == req_id:
+                        st.warning(f"Are you sure you want to reset the password for this user?\n\n`{req_email}`")
+                        cc1, cc2 = st.columns(2)
+                        with cc1:
+                            if st.button("Confirm Password Reset", key=f"confirm_reset_{req_id}", type="primary", use_container_width=True):
+                                caller_admin_id = auth.get_user_id()
+                                ok, msg, temp_pwd = PasswordResetService.process_reset_request(req_id, caller_admin_id)
+                                st.session_state.pop("confirm_reset_req_id", None)
+                                if ok and temp_pwd:
+                                    st.session_state["admin_temp_password_info"] = (req_email, temp_pwd)
+                                    st.rerun()
+                                else:
+                                    st.error(msg)
+                        with cc2:
+                            if st.button("Cancel", key=f"cancel_reset_{req_id}", use_container_width=True):
+                                st.session_state.pop("confirm_reset_req_id", None)
+                                st.rerun()
+                    else:
+                        if st.button("Process Request", key=f"proc_req_{req_id}", type="primary", use_container_width=True):
+                            st.session_state["confirm_reset_req_id"] = req_id
+                            st.rerun()
+
+
 def main() -> None:
     auth.require_admin()
     init_session_state()
@@ -188,6 +260,8 @@ def main() -> None:
     render_top_metrics()
     st.write("")
     render_charts()
+    st.write("")
+    render_password_reset_requests()
     st.write("")
     render_recent_activity()
 

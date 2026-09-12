@@ -93,6 +93,65 @@ def render_license_gate() -> None:
     activate_license.main()
 
 
+def render_mandatory_password_update_screen() -> None:
+    """Renders mandatory password update screen for users logging in with a temporary password.
+    Directly reuses auth.update_password() — matching Profile → Data & Security → Update Password."""
+    sys_name = utils.get_setting("system_name", "AI Habit Tracker")
+    sys_logo = utils.get_setting("system_logo", "🎯")
+    ui_components.inject_global_css()
+
+    st.markdown(f"""
+    <div style="text-align: center; padding: 2rem 0 1rem 0;">
+        <div style="display: inline-flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem;">
+            <div style="width: 46px; height: 46px; background: linear-gradient(135deg, #2563eb, #1d4ed8);
+                        border-radius: 12px; display: flex; align-items: center; justify-content: center;
+                        font-size: 1.4rem; color: white; font-weight: 800; box-shadow: 0 4px 14px rgba(37, 99, 235, 0.4);">{sys_logo}</div>
+            <span style="font-size: 1.6rem; font-weight: 800; color: #0f172a; letter-spacing: -0.03em;">
+                {sys_name}
+            </span>
+        </div>
+        <h2 style="color: #0f172a; margin-top: 0.5rem;">Mandatory Password Update</h2>
+        <p style="color: #475569; font-size: 0.95rem;">
+            You have logged in using a temporary password. Please set a new permanent password to continue to your dashboard.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        with st.container(border=True):
+            st.info("🔒 **Temporary Password Active** (Valid for 24 hours)\nPlease set your new password below.")
+            with st.form("mandatory_password_update_form"):
+                new_pwd = st.text_input("New Password", type="password", key="mandatory_new_pwd",
+                                        help="Must be at least 6 characters long")
+                confirm_pwd = st.text_input("Confirm New Password", type="password", key="mandatory_confirm_pwd")
+                st.write("")
+                if st.form_submit_button("Update Password & Continue", type="primary", use_container_width=True):
+                    if not new_pwd or not confirm_pwd:
+                        st.error("Please fill in both password fields.")
+                    elif new_pwd != confirm_pwd:
+                        st.error("Passwords do not match. Please try again.")
+                    elif len(new_pwd) < 6:
+                        st.error("Password must be at least 6 characters long.")
+                    else:
+                        ok, err = auth.update_password(new_pwd)
+                        if ok:
+                            st.session_state.pop("must_change_password", None)
+                            st.session_state.pop("is_temporary_password", None)
+                            st.session_state.pop("temp_password_expires_at", None)
+                            st.session_state["auth_success"] = "✅ Password updated successfully! Welcome to your dashboard."
+                            st.rerun()
+                        else:
+                            st.error(f"Failed to update password: {err}")
+
+        st.write("")
+        if st.button("🚪 Sign Out", key="mandatory_logout", use_container_width=True):
+            auth.logout()
+            st.session_state["_auth_logged_out"] = True
+            st.session_state["_pending_auth_clear"] = True
+            st.rerun()
+
+
 # Production base URL (must match Supabase Site URL / Redirect URLs)
 PRODUCTION_URL = "https://ai-habbit-tracker.streamlit.app"
 
@@ -262,21 +321,48 @@ def render_auth_ui() -> None:
             # END TEMPORARILY DISABLED — FORGOT PASSWORD UI
             # ──────────────────────────────────────────────────────────────
 
-            # Active login form (without Forgot Password button)
-            with st.form("login_form"):
-                st.markdown("##### Welcome back")
-                email = st.text_input("Email", placeholder="you@example.com", key="login_email")
-                pwd = st.text_input("Password", type="password", key="login_pwd")
-                st.write("")
-                if st.form_submit_button("Sign In", type="primary", use_container_width=True):
-                    if not email or not pwd:
-                        st.error("Please fill in all fields.")
-                    else:
-                        success, result = auth.login(email, pwd)
-                        if success:
-                            st.rerun()
+            if st.session_state.get("_show_forgot_password"):
+                st.markdown("##### Forgot Password?")
+                st.write("Enter your registered email address to request a password reset.")
+                with st.form("forgot_password_request_form"):
+                    reset_email = st.text_input("Email Address", placeholder="you@example.com", key="forgot_pwd_email")
+                    st.write("")
+                    submitted = st.form_submit_button("Submit Request", type="primary", use_container_width=True)
+                    if submitted:
+                        from services.password_reset_service import PasswordResetService
+                        ok, msg = PasswordResetService.create_reset_request(reset_email)
+                        if ok:
+                            st.session_state["reset_req_msg"] = msg
                         else:
-                            st.error(f"Login failed: {result}")
+                            st.error(msg)
+
+                if "reset_req_msg" in st.session_state:
+                    st.success(st.session_state["reset_req_msg"])
+
+                st.write("")
+                if st.button("← Back to Sign In", key="back_to_signin", use_container_width=True):
+                    st.session_state.pop("_show_forgot_password", None)
+                    st.session_state.pop("reset_req_msg", None)
+                    st.rerun()
+            else:
+                with st.form("login_form"):
+                    st.markdown("##### Welcome back")
+                    email = st.text_input("Email", placeholder="you@example.com", key="login_email")
+                    pwd = st.text_input("Password", type="password", key="login_pwd")
+                    st.write("")
+                    if st.form_submit_button("Sign In", type="primary", use_container_width=True):
+                        if not email or not pwd:
+                            st.error("Please fill in all fields.")
+                        else:
+                            success, result = auth.login(email, pwd)
+                            if success:
+                                st.rerun()
+                            else:
+                                st.error(f"Login failed: {result}")
+                if st.button("🔑 Forgot Password?", key="show_forgot_password", use_container_width=True):
+                    st.session_state["_show_forgot_password"] = True
+                    st.session_state.pop("reset_req_msg", None)
+                    st.rerun()
 
         # Tab 2: Activate Purchase
         with tab2:
@@ -649,6 +735,30 @@ def main() -> None:
 
     print("[app] Authenticated session active — rendering dashboard", file=sys.stderr)
     auth.refresh_session()
+
+    # Temporary Password Expiration & Mandatory Password Update Guard
+    user_wrapper = auth.get_user()
+    user_raw = getattr(user_wrapper, "user", None) if user_wrapper else None
+    if user_raw:
+        from services.password_reset_service import PasswordResetService
+        temp_status = PasswordResetService.check_user_temporary_password_status(user_raw)
+        if temp_status.get("is_temporary"):
+            if temp_status.get("is_expired"):
+                auth.logout()
+                st.session_state["_pending_auth_clear"] = True
+                st.session_state["auth_error"] = (
+                    "Your temporary password has expired. "
+                    "Please submit a new password reset request."
+                )
+                st.rerun()
+            else:
+                st.session_state["must_change_password"] = True
+                st.session_state["is_temporary_password"] = True
+                st.session_state["temp_password_expires_at"] = temp_status.get("expires_at")
+
+    if st.session_state.get("must_change_password"):
+        render_mandatory_password_update_screen()
+        return
 
     if "signup_notice" in st.session_state:
         st.info(st.session_state.pop("signup_notice"))
