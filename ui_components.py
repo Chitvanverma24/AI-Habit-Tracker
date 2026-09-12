@@ -304,14 +304,41 @@ def inject_global_css():
     }
 
     /* ===== Chat Input Text Visibility (AI Habit Coach) ===== */
+    .stApp [data-testid="stChatInput"] textarea,
+    .stApp [data-testid="stChatInput"] input,
+    .stApp [data-testid="stChatInputTextArea"],
+    .stApp .stChatInput textarea,
+    .stApp .stChatInput input,
+    .stApp div[data-baseweb="textarea"] textarea,
+    .stApp div[data-baseweb="base-input"] textarea,
     [data-testid="stChatInput"] textarea,
+    [data-testid="stChatInput"] input,
     [data-testid="stChatInputTextArea"],
-    .stChatInput textarea {
+    .stChatInput textarea,
+    .stChatInput input,
+    div[data-baseweb="textarea"] textarea {
         color: #FFFFFF !important;
         -webkit-text-fill-color: #FFFFFF !important;
         caret-color: #FFFFFF !important;
     }
 
+    .stApp [data-testid="stChatInput"] textarea:focus,
+    .stApp [data-testid="stChatInput"] textarea:active,
+    .stApp [data-testid="stChatInputTextArea"]:focus,
+    .stApp [data-testid="stChatInputTextArea"]:active,
+    .stApp .stChatInput textarea:focus,
+    .stApp div[data-baseweb="textarea"] textarea:focus,
+    [data-testid="stChatInput"] textarea:focus,
+    [data-testid="stChatInputTextArea"]:focus,
+    .stChatInput textarea:focus {
+        color: #FFFFFF !important;
+        -webkit-text-fill-color: #FFFFFF !important;
+        caret-color: #FFFFFF !important;
+    }
+
+    .stApp [data-testid="stChatInput"] textarea::placeholder,
+    .stApp [data-testid="stChatInputTextArea"]::placeholder,
+    .stApp .stChatInput textarea::placeholder,
     [data-testid="stChatInput"] textarea::placeholder,
     [data-testid="stChatInputTextArea"]::placeholder,
     .stChatInput textarea::placeholder {
@@ -319,6 +346,7 @@ def inject_global_css():
         -webkit-text-fill-color: rgba(255, 255, 255, 0.65) !important;
         opacity: 1 !important;
     }
+
 
     /* ===== Metric Cards ===== */
     [data-testid="stMetric"] {

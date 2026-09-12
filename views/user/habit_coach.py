@@ -182,15 +182,42 @@ def render_chat_and_input(user_id: str) -> None:
     st.markdown(
         """
         <style>
-        /* Chat input typed text visibility (bright white) and cursor */
+        /* AI Habit Coach - Chat input typed text visibility (bright white) and cursor */
+        .stApp [data-testid="stChatInput"] textarea,
+        .stApp [data-testid="stChatInput"] input,
+        .stApp [data-testid="stChatInputTextArea"],
+        .stApp .stChatInput textarea,
+        .stApp .stChatInput input,
+        .stApp div[data-baseweb="textarea"] textarea,
+        .stApp div[data-baseweb="base-input"] textarea,
         [data-testid="stChatInput"] textarea,
+        [data-testid="stChatInput"] input,
         [data-testid="stChatInputTextArea"],
-        .stChatInput textarea {
+        .stChatInput textarea,
+        .stChatInput input,
+        div[data-baseweb="textarea"] textarea {
             color: #FFFFFF !important;
             -webkit-text-fill-color: #FFFFFF !important;
             caret-color: #FFFFFF !important;
         }
 
+        .stApp [data-testid="stChatInput"] textarea:focus,
+        .stApp [data-testid="stChatInput"] textarea:active,
+        .stApp [data-testid="stChatInputTextArea"]:focus,
+        .stApp [data-testid="stChatInputTextArea"]:active,
+        .stApp .stChatInput textarea:focus,
+        .stApp div[data-baseweb="textarea"] textarea:focus,
+        [data-testid="stChatInput"] textarea:focus,
+        [data-testid="stChatInputTextArea"]:focus,
+        .stChatInput textarea:focus {
+            color: #FFFFFF !important;
+            -webkit-text-fill-color: #FFFFFF !important;
+            caret-color: #FFFFFF !important;
+        }
+
+        .stApp [data-testid="stChatInput"] textarea::placeholder,
+        .stApp [data-testid="stChatInputTextArea"]::placeholder,
+        .stApp .stChatInput textarea::placeholder,
         [data-testid="stChatInput"] textarea::placeholder,
         [data-testid="stChatInputTextArea"]::placeholder,
         .stChatInput textarea::placeholder {
@@ -203,6 +230,35 @@ def render_chat_and_input(user_id: str) -> None:
         unsafe_allow_html=True
     )
 
+    # On initial page load / navigation (not right after sending a message), ensure view starts at top
+    just_sent_message = st.session_state.pop("_coach_message_sent", False)
+    if not just_sent_message:
+        import streamlit.components.v1 as components
+        components.html(
+            """
+            <script>
+            (function() {
+                function resetScroll() {
+                    try {
+                        var doc = window.parent.document;
+                        var appView = doc.querySelector('[data-testid="stAppViewContainer"]');
+                        if (appView) { appView.scrollTop = 0; }
+                        var mainSec = doc.querySelector('section.main');
+                        if (mainSec) { mainSec.scrollTop = 0; }
+                        window.parent.window.scrollTo(0, 0);
+                    } catch(e) {}
+                }
+                resetScroll();
+                setTimeout(resetScroll, 30);
+                setTimeout(resetScroll, 100);
+            })();
+            </script>
+            """,
+            height=0
+        )
+
+
+
     chat_container = st.container(height=520, border=False)
 
     with chat_container:
@@ -212,8 +268,10 @@ def render_chat_and_input(user_id: str) -> None:
             with st.chat_message(role, avatar=avatar):
                 st.markdown(message["content"])
 
-    with st.container():
+    chat_col, = st.columns(1)
+    with chat_col:
         prompt = st.chat_input("Ask your coach for advice, motivation, or habit strategy...")
+
     if prompt:
         st.session_state.coach_messages.append({"role": "user", "content": prompt})
         with chat_container:
