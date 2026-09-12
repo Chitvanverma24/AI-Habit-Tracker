@@ -182,57 +182,60 @@ def render_chat_and_input(user_id: str) -> None:
     st.markdown(
         """
         <style>
-        /* AI Habit Coach - Scoped chat input typed text visibility (pure white) and cursor */
-        .stApp .st-key-ai_coach_input_container [data-testid="stChatInput"] textarea,
+        /* AI Habit Coach - Scoped chat input typed text visibility (bright white) and cursor */
         .stApp .st-key-ai_coach_input_container textarea,
+        .stApp .st-key-ai_coach_input_container input,
+        .stApp .st-key-ai_coach_input_container [contenteditable],
+        .stApp .st-key-ai_coach_input_container [contenteditable="true"],
+        .stApp .st-key-ai_coach_input_container [data-testid="stChatInputTextArea"],
+        .stApp .st-key-ai_coach_input_container [data-baseweb="textarea"] textarea,
+        .stApp .st-key-ai_coach_input_container [data-baseweb="base-input"] input,
+        .stApp .st-key-ai_coach_input_container [data-baseweb="base-input"] textarea,
         .stApp .st-key-ai_coach_chat_input textarea,
+        .stApp .st-key-ai_coach_chat_input input,
+        .stApp .st-key-ai_coach_chat_input [contenteditable],
+        .stApp .st-key-ai_coach_chat_input [contenteditable="true"],
+        .stApp .st-key-ai_coach_chat_input [data-testid="stChatInputTextArea"],
+        .stApp .st-key-ai_coach_chat_input [data-baseweb="textarea"] textarea,
+        .stApp .st-key-ai_coach_chat_input [data-baseweb="base-input"] input,
         .st-key-ai_coach_input_container textarea,
+        .st-key-ai_coach_input_container input,
+        .st-key-ai_coach_input_container [contenteditable],
         .st-key-ai_coach_chat_input textarea,
-        .stApp [data-testid="stChatInput"] textarea,
-        .stApp [data-testid="stChatInput"] input,
-        .stApp [data-testid="stChatInputTextArea"],
-        .stApp .stChatInput textarea,
-        .stApp .stChatInput input,
-        .stApp div[data-baseweb="textarea"] textarea,
-        .stApp div[data-baseweb="base-input"] textarea,
-        [data-testid="stChatInput"] textarea,
-        [data-testid="stChatInput"] input,
-        [data-testid="stChatInputTextArea"],
-        .stChatInput textarea,
-        .stChatInput input,
-        div[data-baseweb="textarea"] textarea {
+        .st-key-ai_coach_chat_input input,
+        .st-key-ai_coach_chat_input [contenteditable] {
             color: #FFFFFF !important;
             -webkit-text-fill-color: #FFFFFF !important;
             caret-color: #FFFFFF !important;
         }
 
-        .stApp .st-key-ai_coach_input_container [data-testid="stChatInput"] textarea:focus,
         .stApp .st-key-ai_coach_input_container textarea:focus,
+        .stApp .st-key-ai_coach_input_container input:focus,
+        .stApp .st-key-ai_coach_input_container [contenteditable]:focus,
+        .stApp .st-key-ai_coach_input_container textarea:active,
+        .stApp .st-key-ai_coach_input_container [data-testid="stChatInputTextArea"]:focus,
+        .stApp .st-key-ai_coach_input_container [data-testid="stChatInputTextArea"]:active,
         .stApp .st-key-ai_coach_chat_input textarea:focus,
+        .stApp .st-key-ai_coach_chat_input input:focus,
+        .stApp .st-key-ai_coach_chat_input [contenteditable]:focus,
+        .stApp .st-key-ai_coach_chat_input textarea:active,
+        .stApp .st-key-ai_coach_chat_input [data-testid="stChatInputTextArea"]:focus,
+        .stApp .st-key-ai_coach_chat_input [data-testid="stChatInputTextArea"]:active,
         .st-key-ai_coach_input_container textarea:focus,
+        .st-key-ai_coach_input_container input:focus,
         .st-key-ai_coach_chat_input textarea:focus,
-        .stApp [data-testid="stChatInput"] textarea:focus,
-        .stApp [data-testid="stChatInput"] textarea:active,
-        .stApp [data-testid="stChatInputTextArea"]:focus,
-        .stApp [data-testid="stChatInputTextArea"]:active,
-        .stApp .stChatInput textarea:focus,
-        .stApp div[data-baseweb="textarea"] textarea:focus,
-        [data-testid="stChatInput"] textarea:focus,
-        [data-testid="stChatInputTextArea"]:focus,
-        .stChatInput textarea:focus {
+        .st-key-ai_coach_chat_input input:focus {
             color: #FFFFFF !important;
             -webkit-text-fill-color: #FFFFFF !important;
             caret-color: #FFFFFF !important;
         }
 
         .stApp .st-key-ai_coach_input_container textarea::placeholder,
-        .st-key-ai_coach_chat_input textarea::placeholder,
-        .stApp [data-testid="stChatInput"] textarea::placeholder,
-        .stApp [data-testid="stChatInputTextArea"]::placeholder,
-        .stApp .stChatInput textarea::placeholder,
-        [data-testid="stChatInput"] textarea::placeholder,
-        [data-testid="stChatInputTextArea"]::placeholder,
-        .stChatInput textarea::placeholder {
+        .stApp .st-key-ai_coach_input_container input::placeholder,
+        .stApp .st-key-ai_coach_chat_input textarea::placeholder,
+        .stApp .st-key-ai_coach_chat_input input::placeholder,
+        .st-key-ai_coach_input_container textarea::placeholder,
+        .st-key-ai_coach_chat_input textarea::placeholder {
             color: rgba(255, 255, 255, 0.65) !important;
             -webkit-text-fill-color: rgba(255, 255, 255, 0.65) !important;
             opacity: 1 !important;
@@ -242,75 +245,31 @@ def render_chat_and_input(user_id: str) -> None:
         unsafe_allow_html=True
     )
 
-    # Direct live script via Streamlit iframe component:
-    # 1. Enforces pure white typed text and caret directly on the chat input textarea element
-    # 2. Resets view scroll position to top on initial page mount / navigation
+    # On initial page load / navigation (not right after sending a message), ensure view starts at top
     just_sent_message = st.session_state.pop("_coach_message_sent", False)
-    import streamlit.components.v1 as components
-    components.html(
-        f"""
-        <script>
-        (function() {{
-            var shouldScrollTop = {str(not just_sent_message).lower()};
-            function resetScroll() {{
-                if (!shouldScrollTop) return;
-                try {{
-                    var doc = window.parent.document;
-                    var appView = doc.querySelector('[data-testid="stAppViewContainer"]');
-                    if (appView) {{ appView.scrollTop = 0; }}
-                    var mainSec = doc.querySelector('section.main');
-                    if (mainSec) {{ mainSec.scrollTop = 0; }}
-                    window.parent.window.scrollTo(0, 0);
-                }} catch(e) {{}}
-            }}
-
-            function enforceWhiteText() {{
-                try {{
-                    var doc = window.parent.document;
-                    if (!doc) return;
-                    var container = doc.querySelector('.st-key-ai_coach_input_container') || doc.querySelector('.st-key-ai_coach_chat_input');
-                    var textareas = container ? container.querySelectorAll('textarea') : doc.querySelectorAll('[data-testid="stChatInputTextArea"]');
-                    textareas.forEach(function(ta) {{
-                        ta.style.setProperty('color', '#FFFFFF', 'important');
-                        ta.style.setProperty('-webkit-text-fill-color', '#FFFFFF', 'important');
-                        ta.style.setProperty('caret-color', '#FFFFFF', 'important');
-                        if (!ta._coachWhiteStyleAttached) {{
-                            ta._coachWhiteStyleAttached = true;
-                            ['input', 'focus', 'blur', 'keydown', 'keyup', 'change'].forEach(function(evt) {{
-                                ta.addEventListener(evt, function() {{
-                                    ta.style.setProperty('color', '#FFFFFF', 'important');
-                                    ta.style.setProperty('-webkit-text-fill-color', '#FFFFFF', 'important');
-                                    ta.style.setProperty('caret-color', '#FFFFFF', 'important');
-                                }});
-                            }});
-                        }}
-                    }});
-                }} catch(e) {{}}
-            }}
-
-            resetScroll();
-            enforceWhiteText();
-            [30, 80, 150, 300, 600, 1200, 2500].forEach(function(t) {{
-                setTimeout(function() {{
-                    resetScroll();
-                    enforceWhiteText();
-                }}, t);
-            }});
-
-            try {{
-                var doc = window.parent.document;
-                if (doc && doc.body) {{
-                    var observer = new MutationObserver(function() {{
-                        enforceWhiteText();
-                    }});
-                    observer.observe(doc.body, {{ childList: true, subtree: true, attributes: true }});
-                }}
-            }} catch(e) {{}}
-        }})();
-        </script>
-        """,
-        height=0
-    )
+    if not just_sent_message:
+        import streamlit.components.v1 as components
+        components.html(
+            """
+            <script>
+            (function() {
+                function resetScroll() {
+                    try {
+                        var doc = window.parent.document;
+                        var appView = doc.querySelector('[data-testid="stAppViewContainer"]');
+                        if (appView) { appView.scrollTop = 0; }
+                        var mainSec = doc.querySelector('section.main');
+                        if (mainSec) { mainSec.scrollTop = 0; }
+                        window.parent.window.scrollTo(0, 0);
+                    } catch(e) {}
+                }
+                resetScroll();
+                setTimeout(resetScroll, 50);
+            })();
+            </script>
+            """,
+            height=0
+        )
 
     chat_container = st.container(height=520, border=False)
 

@@ -304,56 +304,59 @@ def inject_global_css():
     }
 
     /* ===== Chat Input Text Visibility (AI Habit Coach) ===== */
-    .stApp .st-key-ai_coach_input_container [data-testid="stChatInput"] textarea,
     .stApp .st-key-ai_coach_input_container textarea,
+    .stApp .st-key-ai_coach_input_container input,
+    .stApp .st-key-ai_coach_input_container [contenteditable],
+    .stApp .st-key-ai_coach_input_container [contenteditable="true"],
+    .stApp .st-key-ai_coach_input_container [data-testid="stChatInputTextArea"],
+    .stApp .st-key-ai_coach_input_container [data-baseweb="textarea"] textarea,
+    .stApp .st-key-ai_coach_input_container [data-baseweb="base-input"] input,
+    .stApp .st-key-ai_coach_input_container [data-baseweb="base-input"] textarea,
     .stApp .st-key-ai_coach_chat_input textarea,
+    .stApp .st-key-ai_coach_chat_input input,
+    .stApp .st-key-ai_coach_chat_input [contenteditable],
+    .stApp .st-key-ai_coach_chat_input [contenteditable="true"],
+    .stApp .st-key-ai_coach_chat_input [data-testid="stChatInputTextArea"],
+    .stApp .st-key-ai_coach_chat_input [data-baseweb="textarea"] textarea,
+    .stApp .st-key-ai_coach_chat_input [data-baseweb="base-input"] input,
     .st-key-ai_coach_input_container textarea,
+    .st-key-ai_coach_input_container input,
+    .st-key-ai_coach_input_container [contenteditable],
     .st-key-ai_coach_chat_input textarea,
-    .stApp [data-testid="stChatInput"] textarea,
-    .stApp [data-testid="stChatInput"] input,
-    .stApp [data-testid="stChatInputTextArea"],
-    .stApp .stChatInput textarea,
-    .stApp .stChatInput input,
-    .stApp div[data-baseweb="textarea"] textarea,
-    .stApp div[data-baseweb="base-input"] textarea,
-    [data-testid="stChatInput"] textarea,
-    [data-testid="stChatInput"] input,
-    [data-testid="stChatInputTextArea"],
-    .stChatInput textarea,
-    .stChatInput input,
-    div[data-baseweb="textarea"] textarea {
+    .st-key-ai_coach_chat_input input,
+    .st-key-ai_coach_chat_input [contenteditable] {
         color: #FFFFFF !important;
         -webkit-text-fill-color: #FFFFFF !important;
         caret-color: #FFFFFF !important;
     }
 
-    .stApp .st-key-ai_coach_input_container [data-testid="stChatInput"] textarea:focus,
     .stApp .st-key-ai_coach_input_container textarea:focus,
+    .stApp .st-key-ai_coach_input_container input:focus,
+    .stApp .st-key-ai_coach_input_container [contenteditable]:focus,
+    .stApp .st-key-ai_coach_input_container textarea:active,
+    .stApp .st-key-ai_coach_input_container [data-testid="stChatInputTextArea"]:focus,
+    .stApp .st-key-ai_coach_input_container [data-testid="stChatInputTextArea"]:active,
     .stApp .st-key-ai_coach_chat_input textarea:focus,
+    .stApp .st-key-ai_coach_chat_input input:focus,
+    .stApp .st-key-ai_coach_chat_input [contenteditable]:focus,
+    .stApp .st-key-ai_coach_chat_input textarea:active,
+    .stApp .st-key-ai_coach_chat_input [data-testid="stChatInputTextArea"]:focus,
+    .stApp .st-key-ai_coach_chat_input [data-testid="stChatInputTextArea"]:active,
     .st-key-ai_coach_input_container textarea:focus,
+    .st-key-ai_coach_input_container input:focus,
     .st-key-ai_coach_chat_input textarea:focus,
-    .stApp [data-testid="stChatInput"] textarea:focus,
-    .stApp [data-testid="stChatInput"] textarea:active,
-    .stApp [data-testid="stChatInputTextArea"]:focus,
-    .stApp [data-testid="stChatInputTextArea"]:active,
-    .stApp .stChatInput textarea:focus,
-    .stApp div[data-baseweb="textarea"] textarea:focus,
-    [data-testid="stChatInput"] textarea:focus,
-    [data-testid="stChatInputTextArea"]:focus,
-    .stChatInput textarea:focus {
+    .st-key-ai_coach_chat_input input:focus {
         color: #FFFFFF !important;
         -webkit-text-fill-color: #FFFFFF !important;
         caret-color: #FFFFFF !important;
     }
 
     .stApp .st-key-ai_coach_input_container textarea::placeholder,
-    .st-key-ai_coach_chat_input textarea::placeholder,
-    .stApp [data-testid="stChatInput"] textarea::placeholder,
-    .stApp [data-testid="stChatInputTextArea"]::placeholder,
-    .stApp .stChatInput textarea::placeholder,
-    [data-testid="stChatInput"] textarea::placeholder,
-    [data-testid="stChatInputTextArea"]::placeholder,
-    .stChatInput textarea::placeholder {
+    .stApp .st-key-ai_coach_input_container input::placeholder,
+    .stApp .st-key-ai_coach_chat_input textarea::placeholder,
+    .stApp .st-key-ai_coach_chat_input input::placeholder,
+    .st-key-ai_coach_input_container textarea::placeholder,
+    .st-key-ai_coach_chat_input textarea::placeholder {
         color: rgba(255, 255, 255, 0.65) !important;
         -webkit-text-fill-color: rgba(255, 255, 255, 0.65) !important;
         opacity: 1 !important;
