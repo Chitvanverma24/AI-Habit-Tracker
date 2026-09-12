@@ -362,7 +362,7 @@ def inject_global_css():
     .st-key-ai_coach_input_container [data-testid="stChatInput"] > div,
     .st-key-ai_coach_chat_input [data-testid="stChatInput"],
     .st-key-ai_coach_chat_input [data-testid="stChatInput"] > div {
-        background-color: #DCEEFF !important;
+        background-color: #0f172a !important;
     }
 
     .stApp .st-key-ai_coach_input_container textarea,

@@ -189,12 +189,12 @@ def render_chat_and_input(user_id: str) -> None:
 
         /* Main Streamlit chat input container */
         div[data-testid="stChatInput"] {
-            background-color: #DCEEFF !important;
+            background-color: #0f172a !important;
         }
 
         /* Actual text input container */
         div[data-testid="stChatInput"] [data-baseweb="textarea"] {
-            background-color: #DCEEFF !important;
+            background-color: #0f172a !important;
         }
 
         /* Actual typing area */
@@ -202,7 +202,7 @@ def render_chat_and_input(user_id: str) -> None:
             color: #FFFFFF !important;
             -webkit-text-fill-color: #FFFFFF !important;
             caret-color: #FFFFFF !important;
-            background-color: #DCEEFF !important;
+            background-color: #0f172a !important;
         }
 
         /* Keep white text while typing/focused */
@@ -211,7 +211,7 @@ def render_chat_and_input(user_id: str) -> None:
             color: #FFFFFF !important;
             -webkit-text-fill-color: #FFFFFF !important;
             caret-color: #FFFFFF !important;
-            background-color: #DCEEFF !important;
+            background-color: #0f172a !important;
         }
 
         /* Placeholder */
@@ -255,7 +255,7 @@ def render_chat_and_input(user_id: str) -> None:
             height=0
         )
 
-    chat_container = st.container(height=520, border=False)
+    chat_container = st.container(border=False)
 
     with chat_container:
         for message in st.session_state.coach_messages:
