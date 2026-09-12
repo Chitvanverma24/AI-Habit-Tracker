@@ -182,91 +182,52 @@ def render_chat_and_input(user_id: str) -> None:
     st.markdown(
         """
         <style>
-        /* AI Habit Coach - Scoped chat input typed text visibility (bright white) and cursor */
-        .stApp .st-key-ai_coach_input_container textarea,
-        .stApp .st-key-ai_coach_input_container input,
-        .stApp .st-key-ai_coach_input_container [contenteditable],
-        .stApp .st-key-ai_coach_input_container [contenteditable="true"],
-        .stApp .st-key-ai_coach_input_container [data-testid="stChatInputTextArea"],
-        .stApp .st-key-ai_coach_input_container [data-baseweb="textarea"] textarea,
-        .stApp .st-key-ai_coach_input_container [data-baseweb="base-input"] input,
-        .stApp .st-key-ai_coach_input_container [data-baseweb="base-input"] textarea,
-        .stApp .st-key-ai_coach_chat_input textarea,
-        .stApp .st-key-ai_coach_chat_input input,
-        .stApp .st-key-ai_coach_chat_input [contenteditable],
-        .stApp .st-key-ai_coach_chat_input [contenteditable="true"],
-        .stApp .st-key-ai_coach_chat_input [data-testid="stChatInputTextArea"],
-        .stApp .st-key-ai_coach_chat_input [data-baseweb="textarea"] textarea,
-        .stApp .st-key-ai_coach_chat_input [data-baseweb="base-input"] input,
-        .st-key-ai_coach_input_container textarea,
-        .st-key-ai_coach_input_container input,
-        .st-key-ai_coach_input_container [contenteditable],
-        .st-key-ai_coach_chat_input textarea,
-        .st-key-ai_coach_chat_input input,
-        .st-key-ai_coach_chat_input [contenteditable] {
-            color: #FFFFFF !important;
-            -webkit-text-fill-color: #FFFFFF !important;
-            caret-color: #FFFFFF !important;
-        }
 
-        .stApp .st-key-ai_coach_input_container textarea:focus,
-        .stApp .st-key-ai_coach_input_container input:focus,
-        .stApp .st-key-ai_coach_input_container [contenteditable]:focus,
-        .stApp .st-key-ai_coach_input_container textarea:active,
-        .stApp .st-key-ai_coach_input_container [data-testid="stChatInputTextArea"]:focus,
-        .stApp .st-key-ai_coach_input_container [data-testid="stChatInputTextArea"]:active,
-        .stApp .st-key-ai_coach_chat_input textarea:focus,
-        .stApp .st-key-ai_coach_chat_input input:focus,
-        .stApp .st-key-ai_coach_chat_input [contenteditable]:focus,
-        .stApp .st-key-ai_coach_chat_input textarea:active,
-        .stApp .st-key-ai_coach_chat_input [data-testid="stChatInputTextArea"]:focus,
-        .stApp .st-key-ai_coach_chat_input [data-testid="stChatInputTextArea"]:active,
-        .st-key-ai_coach_input_container textarea:focus,
-        .st-key-ai_coach_input_container input:focus,
-        .st-key-ai_coach_chat_input textarea:focus,
-        .st-key-ai_coach_chat_input input:focus {
-            color: #FFFFFF !important;
-            -webkit-text-fill-color: #FFFFFF !important;
-            caret-color: #FFFFFF !important;
-        }
+        /* =====================================================
+           AI HABIT COACH CHAT INPUT ONLY
+           ===================================================== */
 
-        /* AI Habit Coach - Scoped chat input background color (Light Blue) */
-        .stApp .st-key-ai_coach_input_container [data-testid="stChatInput"],
-        .stApp .st-key-ai_coach_input_container [data-testid="stChatInput"] > div,
-        .stApp .st-key-ai_coach_input_container [data-baseweb="textarea"],
-        .stApp .st-key-ai_coach_chat_input [data-testid="stChatInput"],
-        .stApp .st-key-ai_coach_chat_input [data-testid="stChatInput"] > div,
-        .stApp .st-key-ai_coach_chat_input [data-baseweb="textarea"],
-        .st-key-ai_coach_input_container [data-testid="stChatInput"],
-        .st-key-ai_coach_input_container [data-testid="stChatInput"] > div,
-        .st-key-ai_coach_chat_input [data-testid="stChatInput"],
-        .st-key-ai_coach_chat_input [data-testid="stChatInput"] > div {
+        /* Main Streamlit chat input container */
+        div[data-testid="stChatInput"] {
             background-color: #DCEEFF !important;
         }
 
-        .stApp .st-key-ai_coach_input_container textarea,
-        .stApp .st-key-ai_coach_input_container input,
-        .stApp .st-key-ai_coach_chat_input textarea,
-        .stApp .st-key-ai_coach_chat_input input,
-        .st-key-ai_coach_input_container textarea,
-        .st-key-ai_coach_chat_input textarea {
-            background-color: transparent !important;
+        /* Actual text input container */
+        div[data-testid="stChatInput"] [data-baseweb="textarea"] {
+            background-color: #DCEEFF !important;
         }
 
-        .stApp .st-key-ai_coach_input_container textarea::placeholder,
-        .stApp .st-key-ai_coach_input_container input::placeholder,
-        .stApp .st-key-ai_coach_chat_input textarea::placeholder,
-        .stApp .st-key-ai_coach_chat_input input::placeholder,
-        .st-key-ai_coach_input_container textarea::placeholder,
-        .st-key-ai_coach_chat_input textarea::placeholder {
-            color: rgba(255, 255, 255, 0.85) !important;
-            -webkit-text-fill-color: rgba(255, 255, 255, 0.85) !important;
+        /* Actual typing area */
+        div[data-testid="stChatInput"] textarea {
+            color: #FFFFFF !important;
+            -webkit-text-fill-color: #FFFFFF !important;
+            caret-color: #FFFFFF !important;
+            background-color: #DCEEFF !important;
+        }
+
+        /* Keep white text while typing/focused */
+        div[data-testid="stChatInput"] textarea:focus,
+        div[data-testid="stChatInput"] textarea:active {
+            color: #FFFFFF !important;
+            -webkit-text-fill-color: #FFFFFF !important;
+            caret-color: #FFFFFF !important;
+            background-color: #DCEEFF !important;
+        }
+
+        /* Placeholder */
+        div[data-testid="stChatInput"] textarea::placeholder {
+            color: #475569 !important;
+            -webkit-text-fill-color: #475569 !important;
             opacity: 1 !important;
         }
+
         </style>
         """,
         unsafe_allow_html=True
     )
+
+    # On initial page load / navigation (not right after sending a message), ensure view starts at top
+    just_sent_message = st.session_state.pop("_coach_message_sent", False)
 
     # On initial page load / navigation (not right after sending a message), ensure view starts at top
     just_sent_message = st.session_state.pop("_coach_message_sent", False)
