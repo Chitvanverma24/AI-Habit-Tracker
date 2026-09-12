@@ -199,17 +199,17 @@ def render_chat_and_input(user_id: str) -> None:
         }
 
         div[data-testid="stChatInput"] textarea {
-            color: #000000 !important;
-            -webkit-text-fill-color: #000000 !important;
-            caret-color: #000000 !important;
+            color: #FFFFFF !important;
+            -webkit-text-fill-color: #FFFFFF !important;
+            caret-color: #FFFFFF !important;
             background-color: #0f172a !important;
         }
 
         div[data-testid="stChatInput"] textarea:focus,
         div[data-testid="stChatInput"] textarea:active {
-            color: #000000 !important;
-            -webkit-text-fill-color: #000000 !important;
-            caret-color: #000000 !important;
+            color: #FFFFFF !important;
+            -webkit-text-fill-color: #FFFFFF !important;
+            caret-color: #FFFFFF !important;
             background-color: #0f172a !important;
         }
 
