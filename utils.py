@@ -5,8 +5,9 @@ Utility Functions — Business Logic & Data Access
 
 """
 
+import sys
 from datetime import date, datetime, timedelta
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple
 
 import streamlit as st
 from database import get_db
@@ -228,6 +229,58 @@ def get_today_habits(user_id: Optional[str] = None) -> List[Dict]:
     if not uid:
         return []
     return _fetch_today_habits(uid)
+
+
+def normalize_habit_title(title: str) -> str:
+    """Normalizes a habit title for whitespace-safe, case-insensitive comparison.
+
+    Strips leading and trailing spaces, collapses multiple internal spaces,
+    and converts the string to lowercase.
+    """
+    if not title:
+        return ""
+    return " ".join(title.strip().split()).lower()
+
+
+def habit_exists_for_user(
+    user_id: str,
+    title: str,
+    exclude_habit_id: Optional[str] = None
+) -> Tuple[bool, Optional[str]]:
+    """Checks whether a habit with the same normalized name already exists for the given user.
+
+    Returns (True, existing_title) if a duplicate exists for this user, or (False, None) otherwise.
+    Uniqueness is strictly scoped per user_id (different users can have identical habit names).
+    Comparison is case-insensitive and whitespace-safe.
+    """
+    if not user_id or not title:
+        return False, None
+
+    normalized_target = normalize_habit_title(title)
+    if not normalized_target:
+        return False, None
+
+    try:
+        db = get_db()
+        response = (
+            db.table("habits")
+            .select("id, title")
+            .eq("user_id", user_id)
+            .execute()
+        )
+        habits = response.data or []
+        for h in habits:
+            hid = str(h.get("id") or "")
+            if exclude_habit_id and hid == str(exclude_habit_id):
+                continue
+            existing_title = str(h.get("title") or "")
+            if normalize_habit_title(existing_title) == normalized_target:
+                return True, existing_title
+
+        return False, None
+    except Exception as e:
+        print(f"[utils] Error checking habit duplicate: {e}", file=sys.stderr)
+        return False, None
 
 
 @st.cache_data(ttl=60, show_spinner=False)

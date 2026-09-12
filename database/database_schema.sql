@@ -193,6 +193,7 @@ ON CONFLICT (key) DO NOTHING;
 
 CREATE INDEX idx_subscriptions_user_id ON public.subscriptions(user_id);
 CREATE INDEX idx_habits_user_id ON public.habits(user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_habits_user_id_normalized_title ON public.habits(user_id, LOWER(TRIM(title)));
 CREATE INDEX idx_habit_logs_habit_id ON public.habit_logs(habit_id);
 CREATE INDEX idx_habit_logs_user_id ON public.habit_logs(user_id);
 CREATE INDEX idx_habit_logs_log_date ON public.habit_logs(log_date);

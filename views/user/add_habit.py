@@ -19,13 +19,21 @@ def validate_habit(title: str, target_count: int) -> bool:
 
 
 def create_habit(title: str, description: str, frequency: str, target_count: int) -> bool:
-    db = get_db()
     user_id = utils.get_current_user_id()
+    if not user_id:
+        return False
+    clean_title = title.strip() if title else ""
+    exists, existing_name = utils.habit_exists_for_user(user_id, clean_title)
+    if exists:
+        st.warning(f"⚠️ You already have a habit named '{existing_name or clean_title}'. Please choose a different habit name.")
+        return False
+
+    db = get_db()
     now_str = utils.now().isoformat()
     try:
         db.table("habits").insert({
             "user_id": user_id,
-            "title": title.strip(),
+            "title": clean_title,
             "description": description.strip() if description else None,
             "frequency": frequency.lower(),
             "target_count": target_count,
@@ -36,8 +44,12 @@ def create_habit(title: str, description: str, frequency: str, target_count: int
         get_active_habits_count.clear()
         utils.clear_user_caches()
         return True
-    except Exception:
-        st.error("Failed to create habit. Please try again.")
+    except Exception as e:
+        err_msg = str(e).lower()
+        if "duplicate" in err_msg or "unique" in err_msg or "23505" in err_msg:
+            st.warning(f"⚠️ You already have a habit named '{clean_title}'. Please choose a different habit name.")
+        else:
+            st.error("Failed to create habit. Please try again.")
         return False
 
 
@@ -109,17 +121,22 @@ def main():
 
             st.write("")
             if st.button("🚀 Create Habit", type="primary", use_container_width=True):
-                if validate_habit(title, target_count):
-                    success = create_habit(title, description, frequency, target_count)
-                    if success:
-                        st.toast(f"🎉 Habit '{title}' created successfully!", icon="✅")
-                        st.session_state.pop("draft_title", None)
-                        st.session_state.pop("draft_desc", None)
-                        st.session_state.pop("draft_freq", None)
-                        st.session_state.current_page = "Manage Habits"
-                        st.rerun()
-                else:
+                clean_title = title.strip() if title else ""
+                if not validate_habit(clean_title, target_count):
                     st.error("Invalid Input: Title must be 3-100 characters and target count at least 1.")
+                else:
+                    exists, existing_name = utils.habit_exists_for_user(user_id, clean_title)
+                    if exists:
+                        st.warning(f"⚠️ You already have a habit named '{existing_name or clean_title}'. Please choose a different habit name.")
+                    else:
+                        success = create_habit(clean_title, description, frequency, target_count)
+                        if success:
+                            st.toast(f"🎉 Habit '{clean_title}' created successfully!", icon="✅")
+                            st.session_state.pop("draft_title", None)
+                            st.session_state.pop("draft_desc", None)
+                            st.session_state.pop("draft_freq", None)
+                            st.session_state.current_page = "Manage Habits"
+                            st.rerun()
 
 
 if __name__ == "__main__":

@@ -258,11 +258,18 @@ def perform_bulk_action(action: str, habit_ids: Set[str]) -> None:
 def create_habit_db(title: str, description: str, frequency: str, target_count: int) -> None:
     db = get_db()
     user_id = auth.get_user_id()
+    if not user_id:
+        return
+    clean_title = title.strip() if title else ""
+    exists, existing_name = utils.habit_exists_for_user(user_id, clean_title)
+    if exists:
+        st.warning(f"⚠️ You already have a habit named '{existing_name or clean_title}'. Please choose a different habit name.")
+        return
     now_str = utils.now().isoformat()
     try:
         db.table("habits").insert({
             "user_id": user_id,
-            "title": title.strip(),
+            "title": clean_title,
             "description": description.strip() if description else None,
             "frequency": frequency.lower(),
             "target_count": target_count,
@@ -273,16 +280,27 @@ def create_habit_db(title: str, description: str, frequency: str, target_count: 
         st.success("Habit created successfully!")
         refresh_data()
     except Exception as e:
-        st.error(f"Failed to create habit: {e}")
+        err_msg = str(e).lower()
+        if "duplicate" in err_msg or "unique" in err_msg or "23505" in err_msg:
+            st.warning(f"⚠️ You already have a habit named '{clean_title}'. Please choose a different habit name.")
+        else:
+            st.error(f"Failed to create habit: {e}")
 
 
 def update_habit_db(habit_id: str, title: str, description: str, frequency: str, target_count: int) -> None:
     db = get_db()
     user_id = auth.get_user_id()
+    if not user_id:
+        return
+    clean_title = title.strip() if title else ""
+    exists, existing_name = utils.habit_exists_for_user(user_id, clean_title, exclude_habit_id=habit_id)
+    if exists:
+        st.warning(f"⚠️ You already have a habit named '{existing_name or clean_title}'. Please choose a different habit name.")
+        return
     now_str = utils.now().isoformat()
     try:
         db.table("habits").update({
-            "title": title.strip(),
+            "title": clean_title,
             "description": description.strip() if description else None,
             "frequency": frequency.lower(),
             "target_count": target_count,
@@ -291,7 +309,11 @@ def update_habit_db(habit_id: str, title: str, description: str, frequency: str,
         st.toast("Habit updated successfully!", icon="✅")
         refresh_data()
     except Exception as e:
-        st.error(f"Failed to update habit: {e}")
+        err_msg = str(e).lower()
+        if "duplicate" in err_msg or "unique" in err_msg or "23505" in err_msg:
+            st.warning(f"⚠️ You already have a habit named '{clean_title}'. Please choose a different habit name.")
+        else:
+            st.error(f"Failed to update habit: {e}")
 
 
 def delete_habit_db(habit_id: str) -> None:
@@ -390,10 +412,15 @@ def dialog_create_habit(can_create: bool = True) -> None:
             st.rerun()
     with btn_col2:
         if st.button("Save Habit", key="save_create", type="primary", use_container_width=True):
-            if validate_habit_input(title, target_count):
-                create_habit_db(title, description, frequency, target_count)
-            else:
+            clean_title = title.strip() if title else ""
+            if not validate_habit_input(clean_title, target_count):
                 st.error("Invalid Input: Title must be 3-100 characters and target count at least 1.")
+            else:
+                exists, existing_name = utils.habit_exists_for_user(auth.get_user_id(), clean_title)
+                if exists:
+                    st.warning(f"⚠️ You already have a habit named '{existing_name or clean_title}'. Please choose a different habit name.")
+                else:
+                    create_habit_db(clean_title, description, frequency, target_count)
 
 
 @st.dialog("Edit Habit")
@@ -418,10 +445,15 @@ def dialog_edit_habit(habit: Dict[str, Any]) -> None:
             st.rerun()
     with btn_col2:
         if st.button("Save Changes", type="primary", key=f"save_edit_{habit['id']}", use_container_width=True):
-            if validate_habit_input(title, target_count):
-                update_habit_db(habit['id'], title, description, frequency, target_count)
-            else:
+            clean_title = title.strip() if title else ""
+            if not validate_habit_input(clean_title, target_count):
                 st.error("Invalid Input: Title must be 3-100 characters and target count at least 1.")
+            else:
+                exists, existing_name = utils.habit_exists_for_user(auth.get_user_id(), clean_title, exclude_habit_id=habit['id'])
+                if exists:
+                    st.warning(f"⚠️ You already have a habit named '{existing_name or clean_title}'. Please choose a different habit name.")
+                else:
+                    update_habit_db(habit['id'], clean_title, description, frequency, target_count)
 
 
 @st.dialog("Delete Confirmation")
