@@ -303,6 +303,23 @@ def inject_global_css():
         margin-bottom: 0.25rem !important;
     }
 
+    /* ===== Chat Input Text Visibility (AI Habit Coach) ===== */
+    [data-testid="stChatInput"] textarea,
+    [data-testid="stChatInputTextArea"],
+    .stChatInput textarea {
+        color: #FFFFFF !important;
+        -webkit-text-fill-color: #FFFFFF !important;
+        caret-color: #FFFFFF !important;
+    }
+
+    [data-testid="stChatInput"] textarea::placeholder,
+    [data-testid="stChatInputTextArea"]::placeholder,
+    .stChatInput textarea::placeholder {
+        color: rgba(255, 255, 255, 0.65) !important;
+        -webkit-text-fill-color: rgba(255, 255, 255, 0.65) !important;
+        opacity: 1 !important;
+    }
+
     /* ===== Metric Cards ===== */
     [data-testid="stMetric"] {
         background-color: #ffffff !important;

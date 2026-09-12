@@ -179,6 +179,30 @@ def render_top_stats(user_id: str) -> None:
 
 
 def render_chat_and_input(user_id: str) -> None:
+    st.markdown(
+        """
+        <style>
+        /* Chat input typed text visibility (bright white) and cursor */
+        [data-testid="stChatInput"] textarea,
+        [data-testid="stChatInputTextArea"],
+        .stChatInput textarea {
+            color: #FFFFFF !important;
+            -webkit-text-fill-color: #FFFFFF !important;
+            caret-color: #FFFFFF !important;
+        }
+
+        [data-testid="stChatInput"] textarea::placeholder,
+        [data-testid="stChatInputTextArea"]::placeholder,
+        .stChatInput textarea::placeholder {
+            color: rgba(255, 255, 255, 0.65) !important;
+            -webkit-text-fill-color: rgba(255, 255, 255, 0.65) !important;
+            opacity: 1 !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
     chat_container = st.container(height=520, border=False)
 
     with chat_container:
@@ -188,7 +212,8 @@ def render_chat_and_input(user_id: str) -> None:
             with st.chat_message(role, avatar=avatar):
                 st.markdown(message["content"])
 
-    prompt = st.chat_input("Ask your coach for advice, motivation, or habit strategy...")
+    with st.container():
+        prompt = st.chat_input("Ask your coach for advice, motivation, or habit strategy...")
     if prompt:
         st.session_state.coach_messages.append({"role": "user", "content": prompt})
         with chat_container:
@@ -201,6 +226,7 @@ def render_chat_and_input(user_id: str) -> None:
                     st.markdown(ai_response)
 
         st.session_state.coach_messages.append({"role": "assistant", "content": ai_response})
+        st.session_state["_coach_message_sent"] = True
         st.rerun()
 
 
