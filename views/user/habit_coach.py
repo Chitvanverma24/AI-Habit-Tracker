@@ -230,14 +230,37 @@ def render_chat_and_input(user_id: str) -> None:
             caret-color: #FFFFFF !important;
         }
 
+        /* AI Habit Coach - Scoped chat input background color (Light Blue) */
+        .stApp .st-key-ai_coach_input_container [data-testid="stChatInput"],
+        .stApp .st-key-ai_coach_input_container [data-testid="stChatInput"] > div,
+        .stApp .st-key-ai_coach_input_container [data-baseweb="textarea"],
+        .stApp .st-key-ai_coach_chat_input [data-testid="stChatInput"],
+        .stApp .st-key-ai_coach_chat_input [data-testid="stChatInput"] > div,
+        .stApp .st-key-ai_coach_chat_input [data-baseweb="textarea"],
+        .st-key-ai_coach_input_container [data-testid="stChatInput"],
+        .st-key-ai_coach_input_container [data-testid="stChatInput"] > div,
+        .st-key-ai_coach_chat_input [data-testid="stChatInput"],
+        .st-key-ai_coach_chat_input [data-testid="stChatInput"] > div {
+            background-color: #DCEEFF !important;
+        }
+
+        .stApp .st-key-ai_coach_input_container textarea,
+        .stApp .st-key-ai_coach_input_container input,
+        .stApp .st-key-ai_coach_chat_input textarea,
+        .stApp .st-key-ai_coach_chat_input input,
+        .st-key-ai_coach_input_container textarea,
+        .st-key-ai_coach_chat_input textarea {
+            background-color: transparent !important;
+        }
+
         .stApp .st-key-ai_coach_input_container textarea::placeholder,
         .stApp .st-key-ai_coach_input_container input::placeholder,
         .stApp .st-key-ai_coach_chat_input textarea::placeholder,
         .stApp .st-key-ai_coach_chat_input input::placeholder,
         .st-key-ai_coach_input_container textarea::placeholder,
         .st-key-ai_coach_chat_input textarea::placeholder {
-            color: rgba(255, 255, 255, 0.65) !important;
-            -webkit-text-fill-color: rgba(255, 255, 255, 0.65) !important;
+            color: rgba(255, 255, 255, 0.85) !important;
+            -webkit-text-fill-color: rgba(255, 255, 255, 0.85) !important;
             opacity: 1 !important;
         }
         </style>
